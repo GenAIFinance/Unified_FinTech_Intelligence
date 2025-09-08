@@ -1,0 +1,364 @@
+{
+  "_metadata": {
+    "version": "2.1",
+    "description": "Enhanced FinTech Digest System - Trend Configurations",
+    "last_updated": "2024-01-15",
+    "notes": [
+      "This file defines all trend categories for content collection and processing",
+      "Keywords are automatically expanded with semantic variations if KEYWORD_EXPANSION_ENABLED=1",
+      "RSS feeds are validated at startup if --validate-feeds is run",
+      "Relevance thresholds can be tuned per trend for optimal content quality"
+    ]
+  },
+  
+  "instant_payments": {
+    "name": "Instant Payments & Real-Time Rails",
+    "description": "Real-time payment systems, instant settlement, and immediate transfer technologies",
+    "priority": "high",
+    "keywords": [
+      "instant payments",
+      "real-time payments", 
+      "RTP",
+      "FedNow",
+      "faster payments",
+      "immediate settlement",
+      "real-time settlement",
+      "instant transfers",
+      "live payments",
+      "instant banking"
+    ],
+    "rss_feeds": [
+      "https://www.federalreserve.gov/feeds/press_all.xml",
+      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
+      "https://www.pymnts.com/feed/",
+      "https://www.americanbanker.com/feed",
+      "https://www.theclearinghouse.org/news-and-insights/rss"
+    ],
+    "min_relevance_score": 0.45,
+    "email_relevance_score": 0.55,
+    "max_articles": 6,
+    "google_search_enabled": true,
+    "include_social": true
+  },
+
+  "a2a_open_banking": {
+    "name": "A2A & Open Banking",
+    "description": "Account-to-account payments, open banking APIs, and financial data sharing",
+    "priority": "high", 
+    "keywords": [
+      "open banking",
+      "PSD2",
+      "PSD3", 
+      "account to account",
+      "A2A payments",
+      "bank-to-bank",
+      "direct bank transfer",
+      "banking APIs",
+      "payment initiation",
+      "account information services",
+      "financial data sharing",
+      "bank connectivity"
+    ],
+    "rss_feeds": [
+      "https://www.consumerfinance.gov/about-us/newsroom/rss/",
+      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
+      "https://www.ecb.europa.eu/rss/fie.html",
+      "https://www.eba.europa.eu/rss.xml"
+    ],
+    "min_relevance_score": 0.35,
+    "email_relevance_score": 0.55,
+    "max_articles": 6,
+    "google_search_enabled": true,
+    "include_social": true
+  },
+
+  "stablecoins": {
+    "name": "Stablecoins & CBDC",
+    "description": "Central bank digital currencies, stablecoins, and blockchain-based payments",
+    "priority": "high",
+    "keywords": [
+      "stablecoin",
+      "CBDC", 
+      "central bank digital currency",
+      "digital dollar",
+      "digital euro",
+      "cryptocurrency payments",
+      "blockchain payments",
+      "digital currency",
+      "tokenized payments",
+      "DeFi payments",
+      "digital tokens"
+    ],
+    "rss_feeds": [
+      "https://www.ecb.europa.eu/rss/fie.html",
+      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
+      "https://www.federalreserve.gov/feeds/press_all.xml",
+      "https://www.bis.org/rss/rssinno.xml"
+    ],
+    "min_relevance_score": 0.35,
+    "email_relevance_score": 0.55,
+    "max_articles": 6,
+    "google_search_enabled": true,
+    "include_social": false
+  },
+
+  "softpos_tap_to_pay": {
+    "name": "SoftPOS & Tap to Pay",
+    "description": "Software-based point of sale, contactless payments, and mobile terminals",
+    "priority": "medium",
+    "keywords": [
+      "SoftPOS",
+      "tap to pay", 
+      "contactless payments",
+      "mobile POS",
+      "mPOS",
+      "smartphone payments",
+      "NFC payments",
+      "mobile terminals",
+      "software point of sale",
+      "proximity payments",
+      "phone-based payments"
+    ],
+    "rss_feeds": [
+      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
+      "https://www.nfcw.com/feed/",
+      "https://www.pymnts.com/feed/"
+    ],
+    "min_relevance_score": 0.35,
+    "email_relevance_score": 0.50,
+    "max_articles": 6,
+    "google_search_enabled": true,
+    "include_social": true
+  },
+
+  "cross_border": {
+    "name": "Cross-Border Payments",
+    "description": "International payments, remittances, and global money transfer systems",
+    "priority": "medium",
+    "keywords": [
+      "cross border payments",
+      "international payments", 
+      "remittance",
+      "FX",
+      "foreign exchange",
+      "global payments",
+      "overseas payments",
+      "correspondent banking",
+      "cross-border transactions",
+      "international transfers",
+      "multi-currency"
+    ],
+    "rss_feeds": [
+      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
+      "https://www.pymnts.com/feed/",
+      "https://www.bis.org/rss/rssinno.xml"
+    ],
+    "min_relevance_score": 0.35,
+    "email_relevance_score": 0.55,
+    "max_articles": 6,
+    "google_search_enabled": true,
+    "include_social": true
+  },
+
+  "bnpl": {
+    "name": "Buy Now, Pay Later",
+    "description": "Installment payments, deferred payment options, and point-of-sale financing",
+    "priority": "medium",
+    "keywords": [
+      "buy now pay later",
+      "BNPL",
+      "installment payments",
+      "Klarna",
+      "Afterpay", 
+      "Affirm",
+      "Sezzle",
+      "deferred payments",
+      "point of sale financing",
+      "split payments",
+      "flexible payments",
+      "delayed payment"
+    ],
+    "rss_feeds": [
+      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
+      "https://www.pymnts.com/feed/",
+      "https://www.americanbanker.com/feed"
+    ],
+    "min_relevance_score": 0.35,
+    "email_relevance_score": 0.55,
+    "max_articles": 6,
+    "google_search_enabled": true,
+    "include_social": true
+  },
+
+  "payment_orchestration": {
+    "name": "Payment Orchestration & Routing",
+    "description": "Smart payment routing, optimization, and transaction management platforms",
+    "priority": "medium",
+    "keywords": [
+      "payment orchestration",
+      "smart routing",
+      "payment optimization", 
+      "payment routing",
+      "payment intelligence",
+      "transaction routing",
+      "payment management",
+      "payment gateway",
+      "payment processing",
+      "transaction orchestration"
+    ],
+    "rss_feeds": [
+      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
+      "https://www.pymnts.com/feed/"
+    ],
+    "min_relevance_score": 0.35,
+    "email_relevance_score": 0.55,
+    "max_articles": 5,
+    "google_search_enabled": true,
+    "include_social": true
+  },
+
+  "fraud_ai": {
+    "name": "Fraud Prevention & AI",
+    "description": "AI-powered fraud detection, risk management, and transaction monitoring",
+    "priority": "high",
+    "keywords": [
+      "fraud prevention",
+      "AI payments",
+      "machine learning payments",
+      "AML",
+      "anti-money laundering",
+      "fraud detection", 
+      "risk management",
+      "transaction monitoring",
+      "behavioral analytics",
+      "anomaly detection",
+      "payment security",
+      "financial crime"
+    ],
+    "rss_feeds": [
+      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
+      "https://www.pymnts.com/feed/",
+      "https://www.americanbanker.com/feed"
+    ],
+    "min_relevance_score": 0.35,
+    "email_relevance_score": 0.55,
+    "max_articles": 7,
+    "google_search_enabled": true,
+    "include_social": false
+  },
+
+  "pci_dss": {
+    "name": "PCI DSS & Payment Security", 
+    "description": "Payment card industry security standards, compliance, and data protection",
+    "priority": "medium",
+    "keywords": [
+      "PCI DSS",
+      "payment security",
+      "data security standard",
+      "compliance",
+      "cybersecurity",
+      "payment card security",
+      "data breach", 
+      "security standards",
+      "financial security",
+      "payment data protection",
+      "tokenization",
+      "encryption"
+    ],
+    "rss_feeds": [
+      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
+      "https://www.americanbanker.com/feed"
+    ],
+    "min_relevance_score": 0.30,
+    "email_relevance_score": 0.50,
+    "max_articles": 5,
+    "google_search_enabled": true,
+    "include_social": false
+  },
+
+  "wallet_nfc": {
+    "name": "Digital Wallets & NFC",
+    "description": "Mobile wallets, digital payment apps, and near-field communication payments",
+    "priority": "medium",
+    "keywords": [
+      "digital wallet",
+      "mobile wallet",
+      "NFC payments",
+      "Apple Pay", 
+      "Google Pay",
+      "Samsung Pay",
+      "mobile payments",
+      "contactless payments",
+      "electronic wallet",
+      "payment apps",
+      "smartphone payments",
+      "digital money"
+    ],
+    "rss_feeds": [
+      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
+      "https://www.nfcw.com/feed/",
+      "https://www.pymnts.com/feed/"
+    ],
+    "min_relevance_score": 0.35,
+    "email_relevance_score": 0.45,
+    "max_articles": 5,
+    "google_search_enabled": true,
+    "include_social": true
+  },
+
+  "embedded_finance": {
+    "name": "Embedded Finance & BaaS",
+    "description": "Banking-as-a-Service, embedded financial services, and fintech partnerships",
+    "priority": "medium",
+    "keywords": [
+      "embedded finance",
+      "banking as a service",
+      "BaaS",
+      "embedded payments",
+      "fintech partnerships",
+      "white label banking",
+      "API banking",
+      "platform banking",
+      "embedded lending",
+      "financial services integration"
+    ],
+    "rss_feeds": [
+      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
+      "https://www.pymnts.com/feed/",
+      "https://www.americanbanker.com/feed"
+    ],
+    "min_relevance_score": 0.30,
+    "email_relevance_score": 0.50,
+    "max_articles": 5,
+    "google_search_enabled": true,
+    "include_social": true
+  },
+
+  "regtech_compliance": {
+    "name": "RegTech & Compliance",
+    "description": "Regulatory technology, compliance automation, and financial regulations",
+    "priority": "low",
+    "keywords": [
+      "RegTech",
+      "regulatory technology",
+      "compliance automation",
+      "financial regulations",
+      "regulatory reporting",
+      "KYC automation", 
+      "AML compliance",
+      "regulatory compliance",
+      "compliance technology",
+      "financial crime prevention"
+    ],
+    "rss_feeds": [
+      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
+      "https://www.americanbanker.com/feed",
+      "https://www.consumerfinance.gov/about-us/newsroom/rss/"
+    ],
+    "min_relevance_score": 0.35,
+    "email_relevance_score": 0.55,
+    "max_articles": 4,
+    "google_search_enabled": true,
+    "include_social": false
+  }
+}
