@@ -1,0 +1,226 @@
+name: FinTech Digest Automation
+
+on:
+  # Run daily at 6:00 AM UTC (adjust timezone as needed)
+  schedule:
+    - cron: '0 10 * * *'
+  
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      test_mode:
+        description: 'Run in test mode (no email sent)'
+        required: false
+        default: 'false'
+        type: boolean
+      debug_mode:
+        description: 'Enable debug logging'
+        required: false
+        default: 'false'
+        type: boolean
+
+# Set workflow-level permissions
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  fintech-digest:
+    name: Generate FinTech Digest
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+        
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y sqlite3 libsqlite3-dev
+        
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Create required directories
+      run: |
+        mkdir -p logs
+        mkdir -p data
+        chmod 755 logs data
+        
+    - name: Set up environment variables
+      run: |
+        # Create .env file from secrets
+        cat > .env << EOF
+        # Core Settings
+        LOG_LEVEL=${{ github.event.inputs.debug_mode == 'true' && 'DEBUG' || 'INFO' }}
+        RELEVANCE_THRESHOLD=${{ secrets.RELEVANCE_THRESHOLD || '0.58' }}
+        STRICT_REGION_FILTER=1
+        KEYWORD_EXPANSION_ENABLED=1
+        KEEP_HISTORICAL_DAYS=365
+        
+        # Email and Semantic Limits
+        MAX_EMAIL_ARTICLES=${{ secrets.MAX_EMAIL_ARTICLES || '25' }}
+        SEMANTIC_TOTAL_LIMIT=${{ secrets.SEMANTIC_TOTAL_LIMIT || '60' }}
+        
+        # LLM Integration
+        LLM_INTEGRATION_ENABLED=${{ secrets.LLM_INTEGRATION_ENABLED || '1' }}
+        LLM_API_KEY=${{ secrets.LLM_API_KEY }}
+        LLM_MODEL=${{ secrets.LLM_MODEL || 'gpt-4o-mini' }}
+        LLM_TEMPERATURE=0.1
+        LLM_MAX_RETRIES=3
+        LLM_BATCH_SIZE=5
+        LLM_MAX_TOKENS_TITLE=32
+        LLM_MAX_TOKENS_SUMMARY=120
+        LLM_SUMMARY_FALLBACK_ENABLED=1
+        LLM_SUMMARY_MIN_CHARS_TRIGGER=60
+        LLM_SUMMARY_LONG_CONTENT_TRIGGER=3000
+        
+        # Semantic Scoring
+        SEMANTIC_SCORING_ENABLED=${{ secrets.SEMANTIC_SCORING_ENABLED || '1' }}
+        
+        # Google Search API
+        GOOGLE_SEARCH_API_KEY=${{ secrets.GOOGLE_SEARCH_API_KEY }}
+        GOOGLE_SEARCH_ENGINE_ID=${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
+        GOOGLE_SEARCH_DAILY_LIMIT=${{ secrets.GOOGLE_SEARCH_DAILY_LIMIT || '85' }}
+        
+        # Email Configuration
+        SMTP_HOST=${{ secrets.SMTP_HOST || 'smtp.gmail.com' }}
+        SMTP_PORT=${{ secrets.SMTP_PORT || '587' }}
+        SMTP_USER=${{ secrets.SMTP_USER }}
+        SMTP_PASSWORD=${{ secrets.SMTP_PASSWORD }}
+        EMAIL_RECIPIENTS=${{ secrets.EMAIL_RECIPIENTS }}
+        
+        # Database
+        DATABASE_PATH=data/fintech_digest.db
+        TREND_CONFIG_JSON=trend_config.json
+        
+        # Connection Pool (disable for serverless)
+        USE_CONNECTION_POOL=0
+        EOF
+        
+    - name: Validate configuration
+      run: |
+        echo "Validating system configuration..."
+        python fintech_digest.py --config-check
+        
+    - name: Validate RSS feeds (weekly only)
+      if: github.event.schedule == '0 6 * * 1' # Only on Mondays
+      run: |
+        echo "Validating RSS feeds..."
+        python fintech_digest.py --validate-feeds
+        
+    - name: Run digest generation
+      id: digest
+      run: |
+        echo "Starting FinTech digest generation..."
+        
+        # Set test mode if requested
+        if [ "${{ github.event.inputs.test_mode }}" = "true" ]; then
+          echo "Running in test mode..."
+          python fintech_digest.py --test
+        else
+          echo "Running production digest..."
+          python fintech_digest.py
+        fi
+        
+        # Capture exit code
+        exit_code=$?
+        echo "exit_code=$exit_code" >> $GITHUB_OUTPUT
+        
+        if [ $exit_code -eq 0 ]; then
+          echo "Digest generated successfully!"
+        else
+          echo "Digest generation failed with exit code: $exit_code"
+          exit $exit_code
+        fi
+        
+    - name: Upload logs
+      if: always()
+      uses: actions/upload-artifact@v3
+      with:
+        name: fintech-digest-logs-${{ github.run_id }}
+        path: |
+          fintech_digest.log
+          logs/
+        retention-days: 7
+        
+    - name: Upload database backup
+      if: success()
+      uses: actions/upload-artifact@v3
+      with:
+        name: fintech-digest-db-backup-${{ github.run_id }}
+        path: data/fintech_digest.db
+        retention-days: 30
+        
+    - name: Check digest statistics
+      if: success()
+      run: |
+        echo "=== DIGEST STATISTICS ==="
+        if [ -f "data/fintech_digest.db" ]; then
+          sqlite3 data/fintech_digest.db "
+            SELECT 
+              'Total Articles: ' || COUNT(*) 
+            FROM articles;
+            
+            SELECT 
+              'Articles Today: ' || COUNT(*) 
+            FROM articles 
+            WHERE DATE(processed_date) = DATE('now');
+            
+            SELECT 
+              'Trends with Articles: ' || COUNT(DISTINCT trend_category) 
+            FROM articles 
+            WHERE DATE(processed_date) = DATE('now');
+          "
+        fi
+        
+    - name: Notify on failure
+      if: failure()
+      run: |
+        echo "::error::FinTech digest generation failed!"
+        echo "Check the logs for detailed error information."
+        
+        # You can add Slack/Discord/email notifications here
+        # Example for Slack webhook:
+        # curl -X POST -H 'Content-type: application/json' \
+        #   --data '{"text":"FinTech Digest failed on GitHub Actions"}' \
+        #   ${{ secrets.SLACK_WEBHOOK_URL }}
+
+  # Optional: Health check job that runs after main job
+  health-check:
+    name: System Health Check
+    runs-on: ubuntu-latest
+    needs: fintech-digest
+    if: always()
+    
+    steps:
+    - name: Check workflow status
+      run: |
+        if [ "${{ needs.fintech-digest.result }}" = "success" ]; then
+          echo "✅ Digest generation completed successfully"
+        elif [ "${{ needs.fintech-digest.result }}" = "failure" ]; then
+          echo "❌ Digest generation failed"
+          exit 1
+        elif [ "${{ needs.fintech-digest.result }}" = "cancelled" ]; then
+          echo "⚠️ Digest generation was cancelled"
+        else
+          echo "⚠️ Digest generation status: ${{ needs.fintech-digest.result }}"
+        fi
+        
+    - name: Report summary
+      run: |
+        echo "### FinTech Digest Automation Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Workflow**: ${{ github.workflow }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Run ID**: ${{ github.run_id }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Trigger**: ${{ github.event_name }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Status**: ${{ needs.fintech-digest.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Timestamp**: $(date -u)" >> $GITHUB_STEP_SUMMARY
