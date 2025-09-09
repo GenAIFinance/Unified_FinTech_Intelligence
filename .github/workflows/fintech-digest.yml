@@ -26,6 +26,13 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         
+    - name: Download previous database
+      uses: actions/download-artifact@v4
+      with:
+        name: fintech-database
+        path: .
+      continue-on-error: true  # Don't fail if no previous database exists
+      
     - name: Run FinTech Digest
       env:
         GOOGLE_SEARCH_API_KEY: ${{ secrets.GOOGLE_SEARCH_API_KEY }}
@@ -39,13 +46,29 @@ jobs:
         SEMANTIC_TOTAL_LIMIT: ${{ vars.SEMANTIC_TOTAL_LIMIT || '60' }}
         LLM_INTEGRATION_ENABLED: ${{ vars.LLM_INTEGRATION_ENABLED || '1' }}
         SEMANTIC_SCORING_ENABLED: ${{ vars.SEMANTIC_SCORING_ENABLED || '1' }}
-        DATABASE_PATH: ":memory:"
+        DATABASE_PATH: fintech_digest.db
         LOG_LEVEL: INFO
         TZ: America/New_York
       run: |
         echo "Starting FinTech Digest at $(date)"
         python fintech_digest.py --verbose
         echo "Digest completed at $(date)"
+        
+    - name: Check database file
+      run: |
+        if [ -f fintech_digest.db ]; then
+          echo "Database file size: $(du -h fintech_digest.db)"
+          echo "Database records: $(sqlite3 fintech_digest.db 'SELECT COUNT(*) FROM articles;' 2>/dev/null || echo 'Unable to count')"
+        else
+          echo "Warning: Database file not found"
+        fi
+        
+    - name: Upload database artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: fintech-database
+        path: fintech_digest.db
+        retention-days: 30
         
     - name: Upload logs
       uses: actions/upload-artifact@v4
@@ -54,3 +77,22 @@ jobs:
         name: digest-logs-${{ github.run_number }}
         path: fintech_digest.log
         retention-days: 7
+        
+    - name: Commit database to repository (optional)
+      if: success()
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        # Only commit if database file exists and has changed
+        if [ -f fintech_digest.db ]; then
+          git add fintech_digest.db
+          
+          # Check if there are changes to commit
+          if git diff --staged --quiet; then
+            echo "No database changes to commit"
+          else
+            git commit -m "Update database - $(date '+%Y-%m-%d %H:%M:%S')"
+            git push
+          fi
+        fi
