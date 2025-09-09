@@ -9,7 +9,9 @@ CRITICAL ENHANCEMENTS v2.1.1:
 2. ENHANCED: Email delivery limited to 20-30 highest quality articles
 3. ENHANCED: Semantic scoring limited to 60 articles total across all trends
 4. ENHANCED: Removed metadata trend from configuration
-5. MAINTAINED: All working functionality from previous version
+5. ENHANCED: Improved email formatting with better article separation and readability
+6. ENHANCED: Professional LLM title generation for equity research context
+7. MAINTAINED: All working functionality from previous version
 
 ARCHITECTURE ENHANCEMENTS:
 - Split large classes into focused components
@@ -689,11 +691,11 @@ def with_retry(max_retries=3, backoff_factor=2, exceptions=(Exception,)):
     return decorator
 
 # --------------------------------------------------------------------------------------
-# LLM Integration with Enhanced Error Handling
+# ENHANCED LLM Integration with Professional Title Generation
 # --------------------------------------------------------------------------------------
 
 class EnhancedLLMIntegration:
-    """Enhanced LLM integration with better error handling"""
+    """Enhanced LLM integration with professional equity research title generation"""
     
     def __init__(self, config: Config):
         self.config = config
@@ -762,11 +764,12 @@ class EnhancedLLMIntegration:
 
     @with_retry(max_retries=3, exceptions=(APIError, aiohttp.ClientError))
     async def enhance_title(self, title: str, content: str = "", force: bool = False) -> str:
-        """Title enhancement with retry logic"""
+        """ENHANCED: Professional title enhancement for equity research context"""
         if not self.enabled or not title:
             return title
 
         if not force:
+            # Conservative enhancement for basic cleanup
             needs_enhancement = (
                 len(title) > 120 or title.count(' | ') > 1 or title.count(' - ') > 1
                 or title.endswith('...') or '...' in title
@@ -774,30 +777,37 @@ class EnhancedLLMIntegration:
             )
             if not needs_enhancement:
                 return title
+            
             prompt = (
-                "You are a financial newsletter editor. "
+                "You are a headline editor for an equity research analyst covering fintech/payments. "
                 "Clean this title for a payments/fintech digest: remove site names, fix truncation, "
-                "keep key entities, add one concrete signal if present, and keep it under 100 characters. "
+                "keep key entities, and ensure clear, scannable format. 65-92 characters preferred, HARD CAP 100. "
                 "Return only the cleaned title.\n\n"
                 f"Original: {title}\n\nCleaned title:"
             )
             max_tok = self.config.llm_max_tokens_title
         else:
+            # ENHANCED: Professional equity research headline generation
             prompt = (
-                "You are a financial newsletter editor for payments/fintech readers.\n"
-                "Rewrite the article title to be precise and informative.\n"
-                "Constraints: 12–16 words; neutral tone; keep key entities; include one concrete signal "
-                "(metric, region, regulation, product, or action); American English; do not invent facts.\n\n"
+                "You are a headline editor for an equity research analyst covering fintech/payments. "
+                "Write ONE concise, scannable headline that: "
+                "- Front-loads who did what (entity + action) in neutral, factual language. "
+                "- If a rail/reg/segment from payments, banking, fintech, regulatory, compliance, security, "
+                "digital wallet, instant payments, open banking, stablecoin, CBDC, cross-border, BNPL, "
+                "fraud prevention appears in the source text, include EXACTLY ONE of them; otherwise include none. "
+                "- 65–92 characters (HARD CAP 100). AP-like style, present tense, numerals OK. No emojis, no site names, no quotes. "
+                "- Use ONLY information present in the provided title/snippet; do not infer or add missing details. "
+                "Return ONLY the headline text.\n\n"
                 f"Original title:\n{title}\n\n"
                 f"Context (snippet):\n{(content or '')[:600]}\n\n"
-                "Return only the rewritten title."
+                "Headline:"
             )
             max_tok = self.config.llm_max_tokens_title
 
         try:
             enhanced = await self._call_llm(prompt, max_tokens=max_tok)
             cleaned = (enhanced or "").strip().strip('"\'')
-            if 15 <= len(cleaned) <= 140 and not cleaned.lower().startswith('error'):
+            if 15 <= len(cleaned) <= 100 and not cleaned.lower().startswith('error'):
                 return cleaned
             return title
         except Exception as e:
@@ -1676,11 +1686,11 @@ class ContentAggregator:
         return articles
 
 # --------------------------------------------------------------------------------------
-# Email Generator
+# ENHANCED Email Generator with Improved Formatting and Card Layout
 # --------------------------------------------------------------------------------------
 
 class ProductionEmailGenerator:
-    """Enhanced email generator with improved formatting"""
+    """ENHANCED: Email generator with improved formatting and professional card layout"""
     
     def __init__(self, config: Config, llm_integration: EnhancedLLMIntegration, summarizer: ArticleSummarizer):
         self.config = config
@@ -1738,6 +1748,7 @@ class ProductionEmailGenerator:
             llm_info = " • LLM Enhanced" if self.llm_integration.enabled else ""
             semantic_info = f" • {semantic_scored_articles} semantic scored" if semantic_scored_articles > 0 else ""
             
+            # ENHANCED: Improved CSS with card layout and better spacing
             html_template = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -1787,26 +1798,37 @@ class ProductionEmailGenerator:
             color: #000;
         }}
         .article {{
-            margin-bottom: 20px;
-            padding: 0;
+            padding: 14px 0 16px 0;
+            border-top: 1px solid #e6e6e6;
+            margin-bottom: 0;
+        }}
+        .trend-section .article:first-child {{
+            border-top: none;
+        }}
+        .article-card {{
+            background: #fafafa;
+            border: 1px solid #e8e8e8;
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 14px;
         }}
         .article-title {{
-            color: #0066cc;
+            font-weight: 700;
+            font-size: 17px;
+            line-height: 1.3;
+            color: #0b57d0;
             text-decoration: none;
             display: block;
-            margin-bottom: 8px;
-            font-size: 16px;
-            line-height: 1.3;
-            font-weight: normal;
+            margin-bottom: 6px;
         }}
         .article-title:hover {{
             text-decoration: underline;
         }}
         .article-summary {{
-            color: #333;
+            color: #222;
             font-size: 14px;
-            margin-bottom: 8px;
-            line-height: 1.4;
+            margin-bottom: 6px;
+            line-height: 1.5;
         }}
         .article-meta {{
             font-size: 12px;
@@ -1815,6 +1837,7 @@ class ProductionEmailGenerator:
             justify-content: space-between;
             align-items: flex-start;
             flex-wrap: wrap;
+            margin-top: 6px;
         }}
         .footer {{
             text-align: center;
@@ -1877,7 +1900,7 @@ class ProductionEmailGenerator:
             return f"<html><body><h2>Error generating digest: {e}</h2></body></html>"
     
     async def _generate_trend_section(self, trend_key: str, trend_info: Dict, articles: List[ContentSource]) -> str:
-        """Generate enhanced section for a trend"""
+        """ENHANCED: Generate trend section with card layout and professional title generation"""
         try:
             emoji = trend_info['emoji']
             name = trend_info['name']
@@ -1899,13 +1922,13 @@ class ProductionEmailGenerator:
                     semantic_pct = int(article.semantic_relevance_score * 100) if article.semantic_relevance_score > 0 else 0
                     article_date = article.published_date.strftime("%Y-%m-%d") if article.published_date else ""
                     
-                    # Force LLM title rewrite for email-visible items
+                    # ENHANCED: Force professional LLM title rewrite for all email-visible items
                     display_title = article.enhanced_title or article.display_title or article.title
                     if self.llm_integration.enabled:
-                        forced = await self.llm_integration.enhance_title(display_title, article.content, force=True)
-                        if forced:
-                            display_title = forced
-                            article.enhanced_title = forced
+                        forced_title = await self.llm_integration.enhance_title(display_title, article.content, force=True)
+                        if forced_title and len(forced_title) >= 15:
+                            display_title = forced_title
+                            article.enhanced_title = forced_title
                     
                     # Ensure summary exists
                     if not article.summary:
@@ -1921,13 +1944,16 @@ class ProductionEmailGenerator:
                     if region_pct < 100:
                         badges += f'<span class="badge quality-score">{region_pct}% US/EU</span>'
                     
+                    # ENHANCED: Card layout with better spacing and structure
                     articles_html += f"""
                     <div class="article">
-                        <a href="{article.url}" class="article-title" target="_blank">{display_title}</a>
-                        <div class="article-summary">{article.summary}</div>
-                        <div class="article-meta">
-                            <div>{badges}</div>
-                            <div>{article.domain}{f' • {article_date}' if article_date else ''} • {article.source_type.upper()}</div>
+                        <div class="article-card">
+                            <a href="{article.url}" class="article-title" target="_blank">{display_title}</a>
+                            <div class="article-summary">{article.summary}</div>
+                            <div class="article-meta">
+                                <div>{badges}</div>
+                                <div>{article.domain}{f' • {article_date}' if article_date else ''} • {article.source_type.upper()}</div>
+                            </div>
                         </div>
                     </div>
                     """
