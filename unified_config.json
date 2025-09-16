@@ -1,470 +1,225 @@
-{
-  "_metadata": {
-    "version": "3.0",
-    "last_updated": "2024-12-15"
-  },
+name: Unified FinTech Intelligence System
 
-  "companies": {
-    "visa": {
-      "name": "Visa",
-      "enabled": true,
-      "priority": "high",
-      "pages": [
-        "https://usa.visa.com/about-visa/newsroom.html",
-        "https://investor.visa.com/news/default.aspx"
-      ],
-      "feeds": [],
-      "max_articles": 3,
-      "max_age_days": 3
-    },
-    "mastercard": {
-      "name": "Mastercard", 
-      "enabled": true,
-      "priority": "high",
-      "pages": [
-        "https://www.mastercard.com/news/newsroom/press-releases/",
-        "https://investor.mastercard.com/investor-news/default.aspx"
-      ],
-      "feeds": [],
-      "max_articles": 3,
-      "max_age_days": 3
-    },
-    "paypal": {
-      "name": "PayPal",
-      "enabled": true,
-      "priority": "high", 
-      "pages": [
-        "https://newsroom.paypal-corp.com/",
-        "https://investor.pypl.com/news-and-events/news/default.aspx"
-      ],
-      "feeds": [],
-      "max_articles": 3,
-      "max_age_days": 3
-    },
-    "stripe": {
-      "name": "Stripe",
-      "enabled": true,
-      "priority": "high",
-      "pages": [
-        "https://stripe.com/newsroom/news",
-        "https://stripe.com/newsroom",
-        "https://stripe.com/blog"
-      ],
-      "feeds": ["https://stripe.com/blog/feed.rss"],
-      "max_articles": 3,
-      "max_age_days": 3
-    },
-    "affirm": {
-      "name": "Affirm",
-      "enabled": false,
-      "priority": "medium",
-      "pages": ["https://www.affirm.com/about/news"],
-      "feeds": [],
-      "max_articles": 3,
-      "max_age_days": 3,
-      "disable_reason": "Investor page timeout issues"
-    },
-    "toast": {
-      "name": "Toast",
-      "enabled": true,
-      "priority": "medium",
-      "pages": [
-        "https://investors.toasttab.com/news/default.aspx",
-        "https://pos.toasttab.com/blog/news"
-      ],
-      "feeds": [],
-      "max_articles": 3,
-      "max_age_days": 3
-    },
-    "adyen": {
-      "name": "Adyen",
-      "enabled": true,
-      "priority": "medium",
-      "pages": [
-        "https://www.adyen.com/press-and-media",
-        "https://www.adyen.com/investor-relations"
-      ],
-      "feeds": [],
-      "max_articles": 3,
-      "max_age_days": 3
-    },
-    "fiserv": {
-      "name": "Fiserv (FI)",
-      "enabled": true,
-      "priority": "medium",
-      "pages": ["https://newsroom.fiserv.com/"],
-      "feeds": [],
-      "max_articles": 3,
-      "max_age_days": 3
-    },
-    "fis": {
-      "name": "FIS",
-      "enabled": true,
-      "priority": "medium", 
-      "pages": ["https://www.fisglobal.com/en/about-us/media-room"],
-      "feeds": [],
-      "max_articles": 3,
-      "max_age_days": 3
-    },
-    "gpn": {
-      "name": "Global Payments (GPN)",
-      "enabled": true,
-      "priority": "medium",
-      "pages": ["https://investors.globalpayments.com/news-events/press-releases"],
-      "feeds": [],
-      "max_articles": 3,
-      "max_age_days": 3
-    }
-  },
+on:
+  schedule:
+    # Runs at 6:00 AM EST (11:00 UTC) daily
+    - cron: '0 11 * * *'
+  workflow_dispatch:  # Allow manual triggering
 
-  "instant_payments": {
-    "name": "Instant Payments & Real-Time Rails",
-    "description": "Real-time payment systems, instant settlement, and immediate transfer technologies",
-    "priority": "high",
-    "keywords": [
-      "instant payments",
-      "real-time payments", 
-      "RTP",
-      "FedNow",
-      "faster payments",
-      "immediate settlement",
-      "real-time settlement",
-      "instant transfers",
-      "live payments",
-      "instant banking"
-    ],
-    "rss_feeds": [
-      "https://www.federalreserve.gov/feeds/press_all.xml",
-      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-      "https://www.pymnts.com/feed/",
-      "https://www.americanbanker.com/feed",
-      "https://www.theclearinghouse.org/news-and-insights/rss"
-    ],
-    "min_relevance_score": 0.45,
-    "email_relevance_score": 0.55,
-    "max_articles": 6,
-    "google_search_enabled": true,
-    "include_social": true
-  },
-
-  "a2a_open_banking": {
-    "name": "A2A & Open Banking",
-    "description": "Account-to-account payments, open banking APIs, and financial data sharing",
-    "priority": "high", 
-    "keywords": [
-      "open banking",
-      "PSD2",
-      "PSD3", 
-      "account to account",
-      "A2A payments",
-      "bank-to-bank",
-      "direct bank transfer",
-      "banking APIs",
-      "payment initiation",
-      "account information services",
-      "financial data sharing",
-      "bank connectivity"
-    ],
-    "rss_feeds": [
-      "https://www.consumerfinance.gov/about-us/newsroom/rss/",
-      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-      "https://www.ecb.europa.eu/rss/fie.html",
-      "https://www.eba.europa.eu/rss.xml"
-    ],
-    "min_relevance_score": 0.35,
-    "email_relevance_score": 0.55,
-    "max_articles": 6,
-    "google_search_enabled": true,
-    "include_social": true
-  },
-
-  "stablecoins": {
-    "name": "Stablecoins & CBDC",
-    "description": "Central bank digital currencies, stablecoins, and blockchain-based payments",
-    "priority": "high",
-    "keywords": [
-      "stablecoin",
-      "CBDC", 
-      "central bank digital currency",
-      "digital dollar",
-      "digital euro",
-      "cryptocurrency payments",
-      "blockchain payments",
-      "digital currency",
-      "tokenized payments",
-      "DeFi payments",
-      "digital tokens"
-    ],
-    "rss_feeds": [
-      "https://www.ecb.europa.eu/rss/fie.html",
-      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-      "https://www.federalreserve.gov/feeds/press_all.xml",
-      "https://www.bis.org/rss/rssinno.xml"
-    ],
-    "min_relevance_score": 0.35,
-    "email_relevance_score": 0.55,
-    "max_articles": 6,
-    "google_search_enabled": true,
-    "include_social": false
-  },
-
-  "softpos_tap_to_pay": {
-    "name": "SoftPOS & Tap to Pay",
-    "description": "Software-based point of sale, contactless payments, and mobile terminals",
-    "priority": "medium",
-    "keywords": [
-      "SoftPOS",
-      "tap to pay", 
-      "contactless payments",
-      "mobile POS",
-      "mPOS",
-      "smartphone payments",
-      "NFC payments",
-      "mobile terminals",
-      "software point of sale",
-      "proximity payments",
-      "phone-based payments"
-    ],
-    "rss_feeds": [
-      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-      "https://www.nfcw.com/feed/",
-      "https://www.pymnts.com/feed/"
-    ],
-    "min_relevance_score": 0.35,
-    "email_relevance_score": 0.50,
-    "max_articles": 6,
-    "google_search_enabled": true,
-    "include_social": true
-  },
-
-  "cross_border": {
-    "name": "Cross-Border Payments",
-    "description": "International payments, remittances, and global money transfer systems",
-    "priority": "medium",
-    "keywords": [
-      "cross border payments",
-      "international payments", 
-      "remittance",
-      "FX",
-      "foreign exchange",
-      "global payments",
-      "overseas payments",
-      "correspondent banking",
-      "cross-border transactions",
-      "international transfers",
-      "multi-currency"
-    ],
-    "rss_feeds": [
-      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-      "https://www.pymnts.com/feed/",
-      "https://www.bis.org/rss/rssinno.xml"
-    ],
-    "min_relevance_score": 0.35,
-    "email_relevance_score": 0.55,
-    "max_articles": 6,
-    "google_search_enabled": true,
-    "include_social": true
-  },
-
-  "bnpl": {
-    "name": "Buy Now, Pay Later",
-    "description": "Installment payments, deferred payment options, and point-of-sale financing",
-    "priority": "medium",
-    "keywords": [
-      "buy now pay later",
-      "BNPL",
-      "installment payments",
-      "Klarna",
-      "Afterpay", 
-      "Affirm",
-      "Sezzle",
-      "deferred payments",
-      "point of sale financing",
-      "split payments",
-      "flexible payments",
-      "delayed payment"
-    ],
-    "rss_feeds": [
-      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-      "https://www.pymnts.com/feed/",
-      "https://www.americanbanker.com/feed"
-    ],
-    "min_relevance_score": 0.35,
-    "email_relevance_score": 0.55,
-    "max_articles": 6,
-    "google_search_enabled": true,
-    "include_social": true
-  },
-
-  "payment_orchestration": {
-    "name": "Payment Orchestration & Routing",
-    "description": "Smart payment routing, optimization, and transaction management platforms",
-    "priority": "medium",
-    "keywords": [
-      "payment orchestration",
-      "smart routing",
-      "payment optimization", 
-      "payment routing",
-      "payment intelligence",
-      "transaction routing",
-      "payment management",
-      "payment gateway",
-      "payment processing",
-      "transaction orchestration"
-    ],
-    "rss_feeds": [
-      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-      "https://www.pymnts.com/feed/"
-    ],
-    "min_relevance_score": 0.35,
-    "email_relevance_score": 0.55,
-    "max_articles": 5,
-    "google_search_enabled": true,
-    "include_social": true
-  },
-
-  "fraud_ai": {
-    "name": "Fraud Prevention & AI",
-    "description": "AI-powered fraud detection, risk management, and transaction monitoring",
-    "priority": "high",
-    "keywords": [
-      "fraud prevention",
-      "AI payments",
-      "machine learning payments",
-      "AML",
-      "anti-money laundering",
-      "fraud detection", 
-      "risk management",
-      "transaction monitoring",
-      "behavioral analytics",
-      "anomaly detection",
-      "payment security",
-      "financial crime"
-    ],
-    "rss_feeds": [
-      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-      "https://www.pymnts.com/feed/",
-      "https://www.americanbanker.com/feed"
-    ],
-    "min_relevance_score": 0.35,
-    "email_relevance_score": 0.55,
-    "max_articles": 7,
-    "google_search_enabled": true,
-    "include_social": false
-  },
-
-  "pci_dss": {
-    "name": "PCI DSS & Payment Security", 
-    "description": "Payment card industry security standards, compliance, and data protection",
-    "priority": "medium",
-    "keywords": [
-      "PCI DSS",
-      "payment security",
-      "data security standard",
-      "compliance",
-      "cybersecurity",
-      "payment card security",
-      "data breach", 
-      "security standards",
-      "financial security",
-      "payment data protection",
-      "tokenization",
-      "encryption"
-    ],
-    "rss_feeds": [
-      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-      "https://www.americanbanker.com/feed"
-    ],
-    "min_relevance_score": 0.30,
-    "email_relevance_score": 0.50,
-    "max_articles": 5,
-    "google_search_enabled": true,
-    "include_social": false
-  },
-
-  "wallet_nfc": {
-    "name": "Digital Wallets & NFC",
-    "description": "Mobile wallets, digital payment apps, and near-field communication payments",
-    "priority": "medium",
-    "keywords": [
-      "digital wallet",
-      "mobile wallet",
-      "NFC payments",
-      "Apple Pay", 
-      "Google Pay",
-      "Samsung Pay",
-      "mobile payments",
-      "contactless payments",
-      "electronic wallet",
-      "payment apps",
-      "smartphone payments",
-      "digital money"
-    ],
-    "rss_feeds": [
-      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-      "https://www.nfcw.com/feed/",
-      "https://www.pymnts.com/feed/"
-    ],
-    "min_relevance_score": 0.35,
-    "email_relevance_score": 0.45,
-    "max_articles": 5,
-    "google_search_enabled": true,
-    "include_social": true
-  },
-
-  "embedded_finance": {
-    "name": "Embedded Finance & BaaS",
-    "description": "Banking-as-a-Service, embedded financial services, and fintech partnerships",
-    "priority": "medium",
-    "keywords": [
-      "embedded finance",
-      "banking as a service",
-      "BaaS",
-      "embedded payments",
-      "fintech partnerships",
-      "white label banking",
-      "API banking",
-      "platform banking",
-      "embedded lending",
-      "financial services integration"
-    ],
-    "rss_feeds": [
-      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-      "https://www.pymnts.com/feed/",
-      "https://www.americanbanker.com/feed"
-    ],
-    "min_relevance_score": 0.30,
-    "email_relevance_score": 0.50,
-    "max_articles": 5,
-    "google_search_enabled": true,
-    "include_social": true
-  },
-
-  "regtech_compliance": {
-    "name": "RegTech & Compliance",
-    "description": "Regulatory technology, compliance automation, and financial regulations",
-    "priority": "low",
-    "keywords": [
-      "RegTech",
-      "regulatory technology",
-      "compliance automation",
-      "financial regulations",
-      "regulatory reporting",
-      "KYC automation", 
-      "AML compliance",
-      "regulatory compliance",
-      "compliance technology",
-      "financial crime prevention"
-    ],
-    "rss_feeds": [
-      "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-      "https://www.americanbanker.com/feed",
-      "https://www.consumerfinance.gov/about-us/newsroom/rss/"
-    ],
-    "min_relevance_score": 0.35,
-    "email_relevance_score": 0.55,
-    "max_articles": 4,
-    "google_search_enabled": true,
-    "include_social": false
-  }
-}
+jobs:
+  run-intelligence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+        cache: 'pip'
+        
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        
+    - name: Verify config file exists
+      run: |
+        if [ -f unified_config.json ]; then
+          echo "Config file found - $(wc -l < unified_config.json) lines"
+          python -c "import json; json.load(open('unified_config.json'))" && echo "Config JSON is valid"
+        else
+          echo "ERROR: unified_config.json not found"
+          exit 1
+        fi
+        
+    - name: Download previous database
+      uses: actions/download-artifact@v4
+      with:
+        name: unified-fintech-database
+        path: .
+      continue-on-error: true
+      
+    - name: Check for existing database
+      run: |
+        if [ -f unified_fintech_intelligence.db ]; then
+          echo "Previous database found - $(du -h unified_fintech_intelligence.db)"
+          echo "Previous record count: $(sqlite3 unified_fintech_intelligence.db 'SELECT COUNT(*) FROM articles;' 2>/dev/null || echo 'Unable to count')"
+        else
+          echo "No previous database found - will create new one on first run"
+        fi
+        
+    - name: Run Unified FinTech Intelligence
+      env:
+        # Core system controls
+        COMPANIES_ENABLED: ${{ vars.COMPANIES_ENABLED || '1' }}
+        TRENDS_ENABLED: ${{ vars.TRENDS_ENABLED || '1' }}
+        LLM_INTEGRATION_ENABLED: ${{ vars.LLM_INTEGRATION_ENABLED || '1' }}
+        SEMANTIC_SCORING_ENABLED: ${{ vars.SEMANTIC_SCORING_ENABLED || '1' }}
+        KEYWORD_EXPANSION_ENABLED: ${{ vars.KEYWORD_EXPANSION_ENABLED || '1' }}
+        STRICT_REGION_FILTER: ${{ vars.STRICT_REGION_FILTER || '1' }}
+        
+        # API Keys (required)
+        GOOGLE_SEARCH_API_KEY: ${{ secrets.GOOGLE_SEARCH_API_KEY }}
+        GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
+        LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        
+        # Email settings (required)
+        SMTP_HOST: ${{ secrets.SMTP_HOST || 'smtp.gmail.com' }}
+        SMTP_PORT: ${{ secrets.SMTP_PORT || '587' }}
+        SMTP_USER: ${{ secrets.SMTP_USER }}
+        SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+        EMAIL_RECIPIENTS: ${{ secrets.EMAIL_RECIPIENTS }}
+        
+        # LLM model and controls
+        LLM_MODEL: ${{ vars.LLM_MODEL || 'gpt-4o-mini' }}
+        LLM_TEMPERATURE: ${{ vars.LLM_TEMPERATURE || '0.1' }}
+        LLM_MAX_RETRIES: ${{ vars.LLM_MAX_RETRIES || '3' }}
+        LLM_MAX_TITLE_ENHANCEMENTS: ${{ vars.LLM_MAX_TITLE_ENHANCEMENTS || '25' }}
+        LLM_MAX_SUMMARIES: ${{ vars.LLM_MAX_SUMMARIES || '15' }}
+        LLM_MAX_TOKENS_TITLE: ${{ vars.LLM_MAX_TOKENS_TITLE || '32' }}
+        LLM_MAX_TOKENS_SUMMARY: ${{ vars.LLM_MAX_TOKENS_SUMMARY || '120' }}
+        LLM_SUMMARY_FALLBACK_ENABLED: ${{ vars.LLM_SUMMARY_FALLBACK_ENABLED || '1' }}
+        
+        # Content quality and limits
+        RELEVANCE_THRESHOLD: ${{ vars.RELEVANCE_THRESHOLD || '0.58' }}
+        MAX_EMAIL_ARTICLES: ${{ vars.MAX_EMAIL_ARTICLES || '40' }}
+        SEMANTIC_TOTAL_LIMIT: ${{ vars.SEMANTIC_TOTAL_LIMIT || '60' }}
+        GOOGLE_SEARCH_DAILY_LIMIT: ${{ vars.GOOGLE_SEARCH_DAILY_LIMIT || '100' }}
+        
+        # Company monitoring settings
+        COMPANY_HOURS_WINDOW: ${{ vars.COMPANY_HOURS_WINDOW || '72' }}
+        COMPANY_MAX_AGE_DAYS: ${{ vars.COMPANY_MAX_AGE_DAYS || '3' }}
+        COMPANY_MAX_ITEMS_PER_SOURCE: ${{ vars.COMPANY_MAX_ITEMS_PER_SOURCE || '50' }}
+        
+        # Database and file settings
+        DATABASE_PATH: unified_fintech_intelligence.db
+        TREND_CONFIG_JSON: unified_config.json
+        KEEP_HISTORICAL_DAYS: ${{ vars.KEEP_HISTORICAL_DAYS || '30' }}
+        USE_CONNECTION_POOL: ${{ vars.USE_CONNECTION_POOL || '1' }}
+        
+        # System settings
+        LOG_LEVEL: ${{ vars.LOG_LEVEL || 'INFO' }}
+        TZ: America/New_York
+        
+      run: |
+        echo "Starting Unified FinTech Intelligence at $(date)"
+        echo "System configuration:"
+        echo "  Companies: ${COMPANIES_ENABLED} | Trends: ${TRENDS_ENABLED} | LLM: ${LLM_INTEGRATION_ENABLED}"
+        echo "  Email limit: ${MAX_EMAIL_ARTICLES} articles"
+        echo "  LLM limits: ${LLM_MAX_TITLE_ENHANCEMENTS} titles, ${LLM_MAX_SUMMARIES} summaries, ${SEMANTIC_TOTAL_LIMIT} semantic"
+        echo "  Model: ${LLM_MODEL} | Google limit: ${GOOGLE_SEARCH_DAILY_LIMIT} queries"
+        echo ""
+        
+        python Unified_FinTech_Intelligence.py --verbose
+        
+        echo ""
+        echo "Intelligence system completed at $(date)"
+        
+    - name: Analyze system outputs
+      run: |
+        echo "=== Database Analysis ==="
+        if [ -f unified_fintech_intelligence.db ]; then
+          echo "Database file size: $(du -h unified_fintech_intelligence.db)"
+          
+          # Try to get database statistics
+          echo "Attempting to analyze database contents..."
+          if command -v sqlite3 >/dev/null 2>&1; then
+            echo "Total articles: $(sqlite3 unified_fintech_intelligence.db 'SELECT COUNT(*) FROM articles;' 2>/dev/null || echo 'Unable to count')"
+            echo "Company articles: $(sqlite3 unified_fintech_intelligence.db "SELECT COUNT(*) FROM articles WHERE source_type='company';" 2>/dev/null || echo 'N/A')"
+            echo "Trend articles: $(sqlite3 unified_fintech_intelligence.db "SELECT COUNT(*) FROM articles WHERE source_type IN ('trend_google', 'trend_rss');" 2>/dev/null || echo 'N/A')"
+            echo "Recent articles (last 3 days): $(sqlite3 unified_fintech_intelligence.db "SELECT COUNT(*) FROM articles WHERE datetime(created_at) >= datetime('now', '-3 days');" 2>/dev/null || echo 'N/A')"
+            echo "High quality articles (>58% relevance): $(sqlite3 unified_fintech_intelligence.db "SELECT COUNT(*) FROM articles WHERE relevance_score >= 0.58;" 2>/dev/null || echo 'N/A')"
+            echo "Semantic scored articles: $(sqlite3 unified_fintech_intelligence.db "SELECT COUNT(*) FROM articles WHERE semantic_relevance_score > 0;" 2>/dev/null || echo 'N/A')"
+          else
+            echo "SQLite3 not available for analysis"
+          fi
+        else
+          echo "WARNING: Database file not found - check for errors in execution"
+        fi
+        
+        echo ""
+        echo "=== Log Analysis ==="
+        if [ -f unified_fintech_intelligence.log ]; then
+          echo "Log file size: $(du -h unified_fintech_intelligence.log)"
+          echo "Error count: $(grep -c ERROR unified_fintech_intelligence.log || echo 0)"
+          echo "Warning count: $(grep -c WARNING unified_fintech_intelligence.log || echo 0)"
+          echo "Info messages: $(grep -c INFO unified_fintech_intelligence.log || echo 0)"
+          
+          # Check for specific success indicators
+          if grep -q "UNIFIED SYSTEM COMPLETED SUCCESSFULLY" unified_fintech_intelligence.log; then
+            echo "Status: SUCCESS - System completed normally"
+          elif grep -q "Email sent successfully" unified_fintech_intelligence.log; then
+            echo "Status: PARTIAL SUCCESS - Email sent"
+          else
+            echo "Status: CHECK REQUIRED - Review logs for issues"
+          fi
+          
+          # Check for LLM usage
+          echo "LLM usage logged: $(grep -c "LLM usage" unified_fintech_intelligence.log || echo 0) times"
+        else
+          echo "WARNING: Log file not found"
+        fi
+        
+    - name: Upload database artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: unified-fintech-database
+        path: unified_fintech_intelligence.db
+        retention-days: 30
+      if: always()
+        
+    - name: Upload logs
+      uses: actions/upload-artifact@v4
+      with:
+        name: intelligence-logs-${{ github.run_number }}
+        path: unified_fintech_intelligence.log
+        retention-days: 7
+      if: always()
+        
+    - name: Upload config snapshot
+      uses: actions/upload-artifact@v4
+      with:
+        name: config-snapshot-${{ github.run_number }}
+        path: unified_config.json
+        retention-days: 7
+      if: always()
+        
+    - name: Commit database to repository
+      if: success() && vars.COMMIT_DATABASE == '1'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        if [ -f unified_fintech_intelligence.db ]; then
+          git add unified_fintech_intelligence.db
+          
+          if git diff --staged --quiet; then
+            echo "No database changes to commit"
+          else
+            git commit -m "Update unified intelligence database - $(date '+%Y-%m-%d %H:%M:%S')"
+            git push
+            echo "Database committed to repository"
+          fi
+        else
+          echo "No database file to commit"
+        fi
+        
+    - name: Execution summary
+      if: always()
+      run: |
+        echo "=== EXECUTION SUMMARY ==="
+        echo "Job status: ${{ job.status }}"
+        echo "Workflow: ${{ github.workflow }}"
+        echo "Run number: ${{ github.run_number }}"
+        echo "Trigger: ${{ github.event_name }}"
+        echo "Time: $(date)"
+        
+        if [ "${{ job.status }}" = "success" ]; then
+          echo "Result: Unified FinTech Intelligence completed successfully"
+        else
+          echo "Result: Execution failed - check logs and artifacts"
+        fi
