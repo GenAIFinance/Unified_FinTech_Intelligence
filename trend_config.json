@@ -1,16 +1,122 @@
 {
   "_metadata": {
-    "version": "2.1",
-    "description": "Enhanced FinTech Digest System - Trend Configurations",
-    "last_updated": "2024-01-15",
-    "notes": [
-      "This file defines all trend categories for content collection and processing",
-      "Keywords are automatically expanded with semantic variations if KEYWORD_EXPANSION_ENABLED=1",
-      "RSS feeds are validated at startup if --validate-feeds is run",
-      "Relevance thresholds can be tuned per trend for optimal content quality"
-    ]
+    "version": "3.0",
+    "last_updated": "2024-12-15"
   },
-  
+
+  "companies": {
+    "visa": {
+      "name": "Visa",
+      "enabled": true,
+      "priority": "high",
+      "pages": [
+        "https://usa.visa.com/about-visa/newsroom.html",
+        "https://investor.visa.com/news/default.aspx"
+      ],
+      "feeds": [],
+      "max_articles": 3,
+      "max_age_days": 3
+    },
+    "mastercard": {
+      "name": "Mastercard", 
+      "enabled": true,
+      "priority": "high",
+      "pages": [
+        "https://www.mastercard.com/news/newsroom/press-releases/",
+        "https://investor.mastercard.com/investor-news/default.aspx"
+      ],
+      "feeds": [],
+      "max_articles": 3,
+      "max_age_days": 3
+    },
+    "paypal": {
+      "name": "PayPal",
+      "enabled": true,
+      "priority": "high", 
+      "pages": [
+        "https://newsroom.paypal-corp.com/",
+        "https://investor.pypl.com/news-and-events/news/default.aspx"
+      ],
+      "feeds": [],
+      "max_articles": 3,
+      "max_age_days": 3
+    },
+    "stripe": {
+      "name": "Stripe",
+      "enabled": true,
+      "priority": "high",
+      "pages": [
+        "https://stripe.com/newsroom/news",
+        "https://stripe.com/newsroom",
+        "https://stripe.com/blog"
+      ],
+      "feeds": ["https://stripe.com/blog/feed.rss"],
+      "max_articles": 3,
+      "max_age_days": 3
+    },
+    "affirm": {
+      "name": "Affirm",
+      "enabled": false,
+      "priority": "medium",
+      "pages": ["https://www.affirm.com/about/news"],
+      "feeds": [],
+      "max_articles": 3,
+      "max_age_days": 3,
+      "disable_reason": "Investor page timeout issues"
+    },
+    "toast": {
+      "name": "Toast",
+      "enabled": true,
+      "priority": "medium",
+      "pages": [
+        "https://investors.toasttab.com/news/default.aspx",
+        "https://pos.toasttab.com/blog/news"
+      ],
+      "feeds": [],
+      "max_articles": 3,
+      "max_age_days": 3
+    },
+    "adyen": {
+      "name": "Adyen",
+      "enabled": true,
+      "priority": "medium",
+      "pages": [
+        "https://www.adyen.com/press-and-media",
+        "https://www.adyen.com/investor-relations"
+      ],
+      "feeds": [],
+      "max_articles": 3,
+      "max_age_days": 3
+    },
+    "fiserv": {
+      "name": "Fiserv (FI)",
+      "enabled": true,
+      "priority": "medium",
+      "pages": ["https://newsroom.fiserv.com/"],
+      "feeds": [],
+      "max_articles": 3,
+      "max_age_days": 3
+    },
+    "fis": {
+      "name": "FIS",
+      "enabled": true,
+      "priority": "medium", 
+      "pages": ["https://www.fisglobal.com/en/about-us/media-room"],
+      "feeds": [],
+      "max_articles": 3,
+      "max_age_days": 3
+    },
+    "gpn": {
+      "name": "Global Payments (GPN)",
+      "enabled": true,
+      "priority": "medium",
+      "pages": ["https://investors.globalpayments.com/news-events/press-releases"],
+      "feeds": [],
+      "max_articles": 3,
+      "max_age_days": 3
+    }
+  },
+
   "instant_payments": {
     "name": "Instant Payments & Real-Time Rails",
     "description": "Real-time payment systems, instant settlement, and immediate transfer technologies",
