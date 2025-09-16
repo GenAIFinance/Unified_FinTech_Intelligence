@@ -10,6 +10,8 @@ BUG FIXES v3.0.2:
 3. FIXED: DNS resolution error for investor.fisglobal.com - updated to correct URL
 4. ENHANCED: Better error handling for network connectivity issues
 5. ENHANCED: More robust database migration with proper column checking
+6. FIXED: Database index creation warnings by checking column existence before creating indexes
+7. FIXED: DateTime comparison errors by ensuring all datetime objects are timezone-aware
 
 CRITICAL FIXES:
 - Fixed "no such column: processed_date" by ensuring it's in base table creation
@@ -17,6 +19,8 @@ CRITICAL FIXES:
 - Fixed fisglobal.com DNS error by correcting URL to investors.fisglobal.com
 - Added fallback handling for network errors
 - Improved database column existence checking before queries
+- Fixed timezone-naive vs timezone-aware datetime comparison errors
+- Fixed database index creation to check for column existence first
 
 All other functionality remains identical to v3.0.1
 """
@@ -230,7 +234,7 @@ class UnifiedConfig:
         
         logger.info(f"Unified configuration loaded - Companies: {'ENABLED' if self.companies_enabled else 'DISABLED'}")
         logger.info(f"Trends: {'ENABLED' if self.trends_enabled else 'DISABLED'}")
-        logger.info(f"LLM: {'ENABLED' if self.llm_enabled else 'DISABLED'} • Model: {self.llm_model}")
+        logger.info(f"LLM: {'ENABLED' if self.llm_enabled else 'DISABLED'} â€¢ Model: {self.llm_model}")
         logger.info(f"Semantic scoring: {'ENABLED' if self.semantic_scoring_enabled else 'DISABLED'} (limit: {self.semantic_total_limit})")
         logger.info(f"Email limit: {self.max_email_articles} articles")
     
@@ -678,22 +682,42 @@ class UnifiedDatabaseManager:
                         logger.debug(f"Could not add column {column_name}: {e}")
 
     def _create_indexes(self):
-        """Properly implemented _create_indexes method"""
-        indexes = [
-            'CREATE INDEX IF NOT EXISTS idx_articles_category_date ON articles(category, processed_date)',
-            'CREATE INDEX IF NOT EXISTS idx_articles_company_date ON articles(company_key, processed_date)',
-            'CREATE INDEX IF NOT EXISTS idx_articles_trend_date ON articles(trend_category, processed_date)',
-            'CREATE INDEX IF NOT EXISTS idx_articles_source_type ON articles(source_type)',
-            'CREATE INDEX IF NOT EXISTS idx_articles_relevance ON articles(relevance_score)',
-            'CREATE INDEX IF NOT EXISTS idx_articles_semantic_relevance ON articles(semantic_relevance_score)',
-            'CREATE INDEX IF NOT EXISTS idx_articles_quality ON articles(quality_score)',
-            'CREATE INDEX IF NOT EXISTS idx_articles_domain ON articles(domain)',
-            'CREATE INDEX IF NOT EXISTS idx_articles_hash ON articles(content_hash)',
-            'CREATE INDEX IF NOT EXISTS idx_articles_canonical ON articles(canonical_url)',
-            'CREATE INDEX IF NOT EXISTS idx_daily_stats_date ON daily_stats(date)',
-        ]
+        """FIXED: Properly implemented _create_indexes method with column existence check"""
         with self._get_connection() as conn:
-            for index_sql in indexes:
+            # Check if processed_date column exists before creating indexes on it
+            has_processed_date = self._column_exists(conn, 'articles', 'processed_date')
+            
+            # Base indexes that don't depend on processed_date
+            base_indexes = [
+                'CREATE INDEX IF NOT EXISTS idx_articles_source_type ON articles(source_type)',
+                'CREATE INDEX IF NOT EXISTS idx_articles_relevance ON articles(relevance_score)',
+                'CREATE INDEX IF NOT EXISTS idx_articles_semantic_relevance ON articles(semantic_relevance_score)',
+                'CREATE INDEX IF NOT EXISTS idx_articles_quality ON articles(quality_score)',
+                'CREATE INDEX IF NOT EXISTS idx_articles_domain ON articles(domain)',
+                'CREATE INDEX IF NOT EXISTS idx_articles_hash ON articles(content_hash)',
+                'CREATE INDEX IF NOT EXISTS idx_articles_canonical ON articles(canonical_url)',
+                'CREATE INDEX IF NOT EXISTS idx_daily_stats_date ON daily_stats(date)',
+            ]
+            
+            # Conditional indexes that require processed_date column
+            date_indexes = []
+            if has_processed_date:
+                date_indexes = [
+                    'CREATE INDEX IF NOT EXISTS idx_articles_category_date ON articles(category, processed_date)',
+                    'CREATE INDEX IF NOT EXISTS idx_articles_company_date ON articles(company_key, processed_date)',
+                    'CREATE INDEX IF NOT EXISTS idx_articles_trend_date ON articles(trend_category, processed_date)',
+                ]
+            else:
+                # Fallback to created_at if processed_date doesn't exist
+                date_indexes = [
+                    'CREATE INDEX IF NOT EXISTS idx_articles_category_date ON articles(category, created_at)',
+                    'CREATE INDEX IF NOT EXISTS idx_articles_company_date ON articles(company_key, created_at)',
+                    'CREATE INDEX IF NOT EXISTS idx_articles_trend_date ON articles(trend_category, created_at)',
+                ]
+            
+            all_indexes = base_indexes + date_indexes
+            
+            for index_sql in all_indexes:
                 try:
                     conn.execute(index_sql)
                 except Exception as e:
@@ -1242,6 +1266,7 @@ def http_get(url: str, timeout: int = 30, max_retries: int = 4) -> requests.Resp
                 raise
 
 def parse_date(text: str) -> Optional[datetime.datetime]:
+    """FIXED: Parse date string and return UTC timezone-aware datetime"""
     if not text:
         return None
     try:
@@ -1249,8 +1274,10 @@ def parse_date(text: str) -> Optional[datetime.datetime]:
         if not dt: 
             return None
         if not dt.tzinfo:
+            # If timezone-naive, assume UTC
             dt = dt.replace(tzinfo=datetime.timezone.utc)
         else:
+            # Convert to UTC
             dt = dt.astimezone(datetime.timezone.utc)
         return dt
     except Exception:
@@ -1372,14 +1399,25 @@ class CompanyMonitoringSystem:
         """FIXED: Collect with 3-day filter for company articles"""
         results: List[Dict] = []
         
-        # FIXED: Add 3-day cutoff for company articles
-        three_days_ago = datetime.datetime.now() - datetime.timedelta(days=3)
+        # FIXED: Add 3-day cutoff with UTC timezone to avoid comparison issues
+        three_days_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=3)
 
         # 1) known feeds
         for feed in company.feeds[:3]:
             feed_results = self.collect_from_feed(feed, max_items=max_items)
-            # Filter by 3-day cutoff
-            filtered_results = [r for r in feed_results if r.get("date") and r["date"] >= three_days_ago]
+            # FIXED: Filter by 3-day cutoff with timezone-aware comparison
+            filtered_results = []
+            for r in feed_results:
+                r_date = r.get("date")
+                if r_date:
+                    # Ensure r_date is timezone-aware for comparison
+                    if r_date.tzinfo is None:
+                        r_date = r_date.replace(tzinfo=datetime.timezone.utc)
+                    if r_date >= three_days_ago:
+                        filtered_results.append(r)
+                else:
+                    # If no date, include it (it's recent enough)
+                    filtered_results.append(r)
             results.extend(filtered_results)
             if len(results) >= max_items:
                 break
@@ -1394,8 +1432,19 @@ class CompanyMonitoringSystem:
                 feeds = self.discover_feeds_from_html(resp.text, page)
                 for f in feeds[:3]:
                     feed_results = self.collect_from_feed(f, max_items=max_items - len(results))
-                    # Filter by 3-day cutoff
-                    filtered_results = [r for r in feed_results if r.get("date") and r["date"] >= three_days_ago]
+                    # FIXED: Filter by 3-day cutoff with timezone-aware comparison
+                    filtered_results = []
+                    for r in feed_results:
+                        r_date = r.get("date")
+                        if r_date:
+                            # Ensure r_date is timezone-aware for comparison
+                            if r_date.tzinfo is None:
+                                r_date = r_date.replace(tzinfo=datetime.timezone.utc)
+                            if r_date >= three_days_ago:
+                                filtered_results.append(r)
+                        else:
+                            # If no date, include it (it's recent enough)
+                            filtered_results.append(r)
                     results.extend(filtered_results)
                     if len(results) >= max_items:
                         break
@@ -1406,8 +1455,19 @@ class CompanyMonitoringSystem:
         if len(results) < max_items:
             for page in company.pages:
                 page_results = self.collect_from_html_page(page, max_items=max_items - len(results))
-                # Filter by 3-day cutoff
-                filtered_results = [r for r in page_results if r.get("date") and r["date"] >= three_days_ago]
+                # FIXED: Filter by 3-day cutoff with timezone-aware comparison
+                filtered_results = []
+                for r in page_results:
+                    r_date = r.get("date")
+                    if r_date:
+                        # Ensure r_date is timezone-aware for comparison
+                        if r_date.tzinfo is None:
+                            r_date = r_date.replace(tzinfo=datetime.timezone.utc)
+                        if r_date >= three_days_ago:
+                            filtered_results.append(r)
+                    else:
+                        # If no date, include it (it's recent enough)
+                        filtered_results.append(r)
                 results.extend(filtered_results)
                 if len(results) >= max_items:
                     break
@@ -1702,7 +1762,7 @@ class EnhancedRSSFeedValidator:
                     return sources
                 if hasattr(feed, 'bozo') and feed.bozo:
                     logger.debug(f"RSS feed has parsing issues but proceeding: {rss_url}")
-                cutoff_date = datetime.datetime.now() - datetime.timedelta(days=14)
+                cutoff_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=14)
                 for entry in feed.entries[:30]:
                     try:
                         source = await self._process_rss_entry(entry, source_name, cutoff_date)
@@ -1741,12 +1801,12 @@ class EnhancedRSSFeedValidator:
         pub_date = None
         if hasattr(entry, 'published_parsed') and entry.published_parsed:
             try:
-                pub_date = datetime.datetime(*entry.published_parsed[:6])
+                pub_date = datetime.datetime(*entry.published_parsed[:6], tzinfo=datetime.timezone.utc)
             except:
                 pass
         elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
             try:
-                pub_date = datetime.datetime(*entry.updated_parsed[:6])
+                pub_date = datetime.datetime(*entry.updated_parsed[:6], tzinfo=datetime.timezone.utc)
             except:
                 pass
         if pub_date and pub_date < cutoff_date:
@@ -1943,9 +2003,9 @@ class GoogleSearchIntegration:
         cleaned = re.sub(r'\s+', ' ', title.strip())
         cleaned = re.sub(r'&[a-zA-Z0-9]+;', '', cleaned)
         patterns = [
-            r'\s*-\s*[^-]*(?:\.com|\.org|\.net|news|times|post|journal).*$',
-            r'\s*\|\s*[^|]*(?:\.com|\.org|\.net|news|times|post|journal).*$',
-            r'\s*::\s*.*$'
+            r'\s*-\s*[^-]*(?:\.com|\.org|\.net|news|times|post|journal).*',
+            r'\s*\|\s*[^|]*(?:\.com|\.org|\.net|news|times|post|journal).*',
+            r'\s*::\s*.*'
         ]
         for pattern in patterns:
             cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
@@ -2460,7 +2520,7 @@ class UnifiedEmailGenerator:
         self.company_emojis = {
             "visa": "💳", "mastercard": "💳", "paypal": "💰", "stripe": "⚡",
             "affirm": "📅", "toast": "🍞", "adyen": "🌍", "fiserv": "🏦",
-            "fis": "🏢", "gpn": "🌍"
+            "fis": "🏢", "gpn": "🌎"
         }
         
         # Trend emoji mapping
