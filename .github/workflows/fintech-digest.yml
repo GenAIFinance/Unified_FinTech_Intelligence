@@ -1,15 +1,14 @@
-name: FinTech Digest Daily Run
-
+name: Unified FinTech Intelligence System
 on:
   schedule:
     # Runs at 6:00 AM EST (11:00 UTC) daily
-    - cron: '0 11 * * *'
+    - cron: '0 11 * * *'  # Fixed cron syntax
   workflow_dispatch:  # Allow manual triggering
 
 jobs:
-  run-digest:
+  run-intelligence:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45  # Increased for unified system
     
     steps:
     - name: Checkout repository
@@ -29,70 +28,145 @@ jobs:
     - name: Download previous database
       uses: actions/download-artifact@v4
       with:
-        name: fintech-database
+        name: unified-fintech-database
         path: .
       continue-on-error: true  # Don't fail if no previous database exists
       
-    - name: Run FinTech Digest
+    - name: Verify config file
+      run: |
+        if [ -f unified_config.json ]; then
+          echo "Config file found - $(wc -l < unified_config.json) lines"
+          python -c "import json; json.load(open('unified_config.json'))" && echo "Config JSON is valid"
+        else
+          echo "Warning: unified_config.json not found"
+          exit 1
+        fi
+        
+    - name: Run Unified FinTech Intelligence
       env:
+        # Core system settings
+        COMPANIES_ENABLED: ${{ vars.COMPANIES_ENABLED || '1' }}
+        TRENDS_ENABLED: ${{ vars.TRENDS_ENABLED || '1' }}
+        LLM_INTEGRATION_ENABLED: ${{ vars.LLM_INTEGRATION_ENABLED || '1' }}
+        SEMANTIC_SCORING_ENABLED: ${{ vars.SEMANTIC_SCORING_ENABLED || '1' }}
+        KEYWORD_EXPANSION_ENABLED: ${{ vars.KEYWORD_EXPANSION_ENABLED || '1' }}
+        
+        # API Keys
         GOOGLE_SEARCH_API_KEY: ${{ secrets.GOOGLE_SEARCH_API_KEY }}
         GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
         LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        
+        # Email settings
+        SMTP_HOST: ${{ secrets.SMTP_HOST || 'smtp.gmail.com' }}
+        SMTP_PORT: ${{ secrets.SMTP_PORT || '587' }}
         SMTP_USER: ${{ secrets.SMTP_USER }}
         SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
         EMAIL_RECIPIENTS: ${{ secrets.EMAIL_RECIPIENTS }}
-        RELEVANCE_THRESHOLD: ${{ vars.RELEVANCE_THRESHOLD || '0.58' }}
-        MAX_EMAIL_ARTICLES: ${{ vars.MAX_EMAIL_ARTICLES || '25' }}
-        SEMANTIC_TOTAL_LIMIT: ${{ vars.SEMANTIC_TOTAL_LIMIT || '60' }}
-        LLM_INTEGRATION_ENABLED: ${{ vars.LLM_INTEGRATION_ENABLED || '1' }}
-        SEMANTIC_SCORING_ENABLED: ${{ vars.SEMANTIC_SCORING_ENABLED || '1' }}
-        DATABASE_PATH: fintech_digest.db
-        LOG_LEVEL: INFO
-        TZ: America/New_York
-      run: |
-        echo "Starting FinTech Digest at $(date)"
-        python fintech_digest.py --verbose
-        echo "Digest completed at $(date)"
         
-    - name: Check database file
+        # LLM controls and limits
+        LLM_MODEL: ${{ vars.LLM_MODEL || 'gpt-4o-mini' }}
+        LLM_TEMPERATURE: ${{ vars.LLM_TEMPERATURE || '0.1' }}
+        LLM_MAX_TITLE_ENHANCEMENTS: ${{ vars.LLM_MAX_TITLE_ENHANCEMENTS || '25' }}
+        LLM_MAX_SUMMARIES: ${{ vars.LLM_MAX_SUMMARIES || '15' }}
+        SEMANTIC_TOTAL_LIMIT: ${{ vars.SEMANTIC_TOTAL_LIMIT || '60' }}
+        LLM_MAX_TOKENS_TITLE: ${{ vars.LLM_MAX_TOKENS_TITLE || '32' }}
+        LLM_MAX_TOKENS_SUMMARY: ${{ vars.LLM_MAX_TOKENS_SUMMARY || '120' }}
+        
+        # Content and quality settings
+        RELEVANCE_THRESHOLD: ${{ vars.RELEVANCE_THRESHOLD || '0.58' }}
+        MAX_EMAIL_ARTICLES: ${{ vars.MAX_EMAIL_ARTICLES || '40' }}
+        GOOGLE_SEARCH_DAILY_LIMIT: ${{ vars.GOOGLE_SEARCH_DAILY_LIMIT || '100' }}
+        
+        # Company-specific settings
+        COMPANY_HOURS_WINDOW: ${{ vars.COMPANY_HOURS_WINDOW || '72' }}
+        COMPANY_MAX_AGE_DAYS: ${{ vars.COMPANY_MAX_AGE_DAYS || '3' }}
+        COMPANY_MAX_ITEMS_PER_SOURCE: ${{ vars.COMPANY_MAX_ITEMS_PER_SOURCE || '50' }}
+        
+        # Database and config
+        DATABASE_PATH: unified_fintech_intelligence.db
+        TREND_CONFIG_JSON: unified_config.json
+        KEEP_HISTORICAL_DAYS: ${{ vars.KEEP_HISTORICAL_DAYS || '30' }}
+        USE_CONNECTION_POOL: ${{ vars.USE_CONNECTION_POOL || '1' }}
+        
+        # System settings
+        LOG_LEVEL: ${{ vars.LOG_LEVEL || 'INFO' }}
+        TZ: America/New_York
+        
       run: |
-        if [ -f fintech_digest.db ]; then
-          echo "Database file size: $(du -h fintech_digest.db)"
-          echo "Database records: $(sqlite3 fintech_digest.db 'SELECT COUNT(*) FROM articles;' 2>/dev/null || echo 'Unable to count')"
+        echo "🚀 Starting Unified FinTech Intelligence at $(date)"
+        echo "📊 Companies: ${COMPANIES_ENABLED} | Trends: ${TRENDS_ENABLED} | LLM: ${LLM_INTEGRATION_ENABLED}"
+        echo "🎯 Email limit: ${MAX_EMAIL_ARTICLES} | LLM limits: ${LLM_MAX_TITLE_ENHANCEMENTS} titles, ${LLM_MAX_SUMMARIES} summaries"
+        python Unified_FinTech_Intelligence.py --verbose
+        echo "✅ Intelligence system completed at $(date)"
+        
+    - name: Check system outputs
+      run: |
+        echo "=== Database Analysis ==="
+        if [ -f unified_fintech_intelligence.db ]; then
+          echo "Database file size: $(du -h unified_fintech_intelligence.db)"
+          echo "Total articles: $(sqlite3 unified_fintech_intelligence.db 'SELECT COUNT(*) FROM articles;' 2>/dev/null || echo 'Unable to count')"
+          echo "Company articles: $(sqlite3 unified_fintech_intelligence.db "SELECT COUNT(*) FROM articles WHERE source_type='company';" 2>/dev/null || echo 'N/A')"
+          echo "Trend articles: $(sqlite3 unified_fintech_intelligence.db "SELECT COUNT(*) FROM articles WHERE source_type IN ('trend_google', 'trend_rss');" 2>/dev/null || echo 'N/A')"
+          echo "Recent articles (last 3 days): $(sqlite3 unified_fintech_intelligence.db "SELECT COUNT(*) FROM articles WHERE datetime(processed_date) >= datetime('now', '-3 days');" 2>/dev/null || echo 'N/A')"
         else
-          echo "Warning: Database file not found"
+          echo "⚠️ Warning: Database file not found"
+        fi
+        
+        echo "=== Log Analysis ==="
+        if [ -f unified_fintech_intelligence.log ]; then
+          echo "Log file size: $(du -h unified_fintech_intelligence.log)"
+          echo "Error count: $(grep -c ERROR unified_fintech_intelligence.log || echo 0)"
+          echo "Warning count: $(grep -c WARNING unified_fintech_intelligence.log || echo 0)"
+          echo "LLM usage lines: $(grep -c "LLM usage" unified_fintech_intelligence.log || echo 0)"
         fi
         
     - name: Upload database artifact
       uses: actions/upload-artifact@v4
       with:
-        name: fintech-database
-        path: fintech_digest.db
+        name: unified-fintech-database
+        path: unified_fintech_intelligence.db
         retention-days: 30
         
     - name: Upload logs
       uses: actions/upload-artifact@v4
       if: always()
       with:
-        name: digest-logs-${{ github.run_number }}
-        path: fintech_digest.log
+        name: intelligence-logs-${{ github.run_number }}
+        path: unified_fintech_intelligence.log
+        retention-days: 7
+        
+    - name: Upload config for reference
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: config-snapshot-${{ github.run_number }}
+        path: unified_config.json
         retention-days: 7
         
     - name: Commit database to repository (optional)
-      if: success()
+      if: success() && vars.COMMIT_DATABASE == '1'
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
         
         # Only commit if database file exists and has changed
-        if [ -f fintech_digest.db ]; then
-          git add fintech_digest.db
+        if [ -f unified_fintech_intelligence.db ]; then
+          git add unified_fintech_intelligence.db
           
           # Check if there are changes to commit
           if git diff --staged --quiet; then
             echo "No database changes to commit"
           else
-            git commit -m "Update database - $(date '+%Y-%m-%d %H:%M:%S')"
+            git commit -m "Update unified intelligence database - $(date '+%Y-%m-%d %H:%M:%S')"
             git push
           fi
+        fi
+        
+    - name: Summary notification
+      if: always()
+      run: |
+        if [ "${{ job.status }}" = "success" ]; then
+          echo "✅ Unified FinTech Intelligence completed successfully"
+        else
+          echo "❌ Unified FinTech Intelligence failed - check logs"
         fi
