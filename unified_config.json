@@ -2,7 +2,7 @@ name: Unified FinTech Intelligence System
 
 on:
   schedule:
-    - cron: '0 11 * * *'
+    - cron: "0 11 * * *"
   workflow_dispatch:
 
 jobs:
@@ -17,13 +17,13 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
-          cache: 'pip'
+          python-version: "3.11"
+          cache: "pip"
           
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install aiohttp feedparser beautifulsoup4 scikit-learn numpy python-dotenv requests urllib3 python-dateutil
+          pip install -r requirements.txt
           
       - name: Verify config file exists
         run: |
@@ -53,27 +53,20 @@ jobs:
           
       - name: Run Unified FinTech Intelligence
         env:
-          # Core system controls
           COMPANIES_ENABLED: ${{ vars.COMPANIES_ENABLED || '1' }}
           TRENDS_ENABLED: ${{ vars.TRENDS_ENABLED || '1' }}
           LLM_INTEGRATION_ENABLED: ${{ vars.LLM_INTEGRATION_ENABLED || '1' }}
           SEMANTIC_SCORING_ENABLED: ${{ vars.SEMANTIC_SCORING_ENABLED || '1' }}
           KEYWORD_EXPANSION_ENABLED: ${{ vars.KEYWORD_EXPANSION_ENABLED || '1' }}
           STRICT_REGION_FILTER: ${{ vars.STRICT_REGION_FILTER || '1' }}
-          
-          # API Keys (required)
           GOOGLE_SEARCH_API_KEY: ${{ secrets.GOOGLE_SEARCH_API_KEY }}
           GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
-          
-          # Email settings (required)
           SMTP_HOST: ${{ secrets.SMTP_HOST || 'smtp.gmail.com' }}
           SMTP_PORT: ${{ secrets.SMTP_PORT || '587' }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           EMAIL_RECIPIENTS: ${{ secrets.EMAIL_RECIPIENTS }}
-          
-          # LLM model and controls
           LLM_MODEL: ${{ vars.LLM_MODEL || 'gpt-4o-mini' }}
           LLM_TEMPERATURE: ${{ vars.LLM_TEMPERATURE || '0.1' }}
           LLM_MAX_RETRIES: ${{ vars.LLM_MAX_RETRIES || '3' }}
@@ -82,28 +75,19 @@ jobs:
           LLM_MAX_TOKENS_TITLE: ${{ vars.LLM_MAX_TOKENS_TITLE || '32' }}
           LLM_MAX_TOKENS_SUMMARY: ${{ vars.LLM_MAX_TOKENS_SUMMARY || '120' }}
           LLM_SUMMARY_FALLBACK_ENABLED: ${{ vars.LLM_SUMMARY_FALLBACK_ENABLED || '1' }}
-          
-          # Content quality and limits
           RELEVANCE_THRESHOLD: ${{ vars.RELEVANCE_THRESHOLD || '0.58' }}
           MAX_EMAIL_ARTICLES: ${{ vars.MAX_EMAIL_ARTICLES || '40' }}
           SEMANTIC_TOTAL_LIMIT: ${{ vars.SEMANTIC_TOTAL_LIMIT || '60' }}
           GOOGLE_SEARCH_DAILY_LIMIT: ${{ vars.GOOGLE_SEARCH_DAILY_LIMIT || '100' }}
-          
-          # Company monitoring settings
           COMPANY_HOURS_WINDOW: ${{ vars.COMPANY_HOURS_WINDOW || '72' }}
           COMPANY_MAX_AGE_DAYS: ${{ vars.COMPANY_MAX_AGE_DAYS || '3' }}
           COMPANY_MAX_ITEMS_PER_SOURCE: ${{ vars.COMPANY_MAX_ITEMS_PER_SOURCE || '50' }}
-          
-          # Database and file settings
           DATABASE_PATH: unified_fintech_intelligence.db
           TREND_CONFIG_JSON: unified_config.json
           KEEP_HISTORICAL_DAYS: ${{ vars.KEEP_HISTORICAL_DAYS || '30' }}
           USE_CONNECTION_POOL: ${{ vars.USE_CONNECTION_POOL || '1' }}
-          
-          # System settings
           LOG_LEVEL: ${{ vars.LOG_LEVEL || 'INFO' }}
           TZ: America/New_York
-          
         run: |
           echo "Starting Unified FinTech Intelligence at $(date)"
           echo "System configuration:"
@@ -124,7 +108,6 @@ jobs:
           if [ -f unified_fintech_intelligence.db ]; then
             echo "Database file size: $(du -h unified_fintech_intelligence.db)"
             
-            # Try to get database statistics
             echo "Attempting to analyze database contents..."
             if command -v sqlite3 >/dev/null 2>&1; then
               echo "Total articles: $(sqlite3 unified_fintech_intelligence.db 'SELECT COUNT(*) FROM articles;' 2>/dev/null || echo 'Unable to count')"
@@ -148,7 +131,6 @@ jobs:
             echo "Warning count: $(grep -c WARNING unified_fintech_intelligence.log || echo 0)"
             echo "Info messages: $(grep -c INFO unified_fintech_intelligence.log || echo 0)"
             
-            # Check for specific success indicators
             if grep -q "UNIFIED SYSTEM COMPLETED SUCCESSFULLY" unified_fintech_intelligence.log; then
               echo "Status: SUCCESS - System completed normally"
             elif grep -q "Email sent successfully" unified_fintech_intelligence.log; then
@@ -157,36 +139,35 @@ jobs:
               echo "Status: CHECK REQUIRED - Review logs for issues"
             fi
             
-            # Check for LLM usage
             echo "LLM usage logged: $(grep -c "LLM usage" unified_fintech_intelligence.log || echo 0) times"
           else
             echo "WARNING: Log file not found"
           fi
           
       - name: Upload database artifact
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: unified-fintech-database
           path: unified_fintech_intelligence.db
           retention-days: 30
-        if: always()
-        
+          
       - name: Upload logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: intelligence-logs-${{ github.run_number }}
           path: unified_fintech_intelligence.log
           retention-days: 7
-        if: always()
-        
+          
       - name: Upload config snapshot
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: config-snapshot-${{ github.run_number }}
           path: unified_config.json
           retention-days: 7
-        if: always()
-        
+          
       - name: Commit database to repository
         if: success() && vars.COMMIT_DATABASE == '1'
         run: |
