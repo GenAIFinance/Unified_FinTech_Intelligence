@@ -12,6 +12,7 @@ numpy==1.24.3
 
 # Configuration and environment
 python-dotenv==1.0.0
+python-dateutil>=2.8.0
 
 # URL parsing and validation
 urllib3==2.1.0
@@ -54,3 +55,4 @@ requests==2.31.0
 # Optional: Cloud deployment (uncomment for production)
 # gunicorn==21.2.0
 # redis==5.0.1
+
