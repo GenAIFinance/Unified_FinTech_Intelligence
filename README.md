@@ -1,6 +1,18 @@
-ion, and historical data management
+# Unified FinTech Intelligence System v3.0.2
+
+An automated financial technology intelligence system that monitors company updates and industry trends, delivering curated insights through AI-powered content analysis and professional email digests.
+
+## Features
+
+- **Dual Intelligence Streams**: Company news monitoring + trend analysis from 10+ FinTech categories
+- **Company Monitoring**: Real-time tracking of 10 major payments companies (Visa, Mastercard, PayPal, Stripe, etc.)
+- **AI-Powered Enhancement**: OpenAI integration for title enhancement, summarization, and semantic scoring
+- **Smart Content Curation**: Region filtering (US/EU focus), relevance scoring, 3-day freshness for company news
+- **Professional Email Digests**: HTML emails with company updates and trend analysis
+- **Robust Database**: SQLite with connection pooling, column validation, and historical data management
 - **Production Ready**: GitHub Actions automation, comprehensive error handling, and monitoring
 - **Token Management**: Precise LLM usage controls (25 title enhancements, 15 summaries, 60 semantic scores)
+
 
 ## Quick Start
 
