@@ -1,7 +1,7 @@
 {
   "_metadata": {
-    "version": "3.0",
-    "last_updated": "2024-12-15"
+    "version": "3.1",
+    "last_updated": "2025-09-17"
   },
   "companies": {
     "visa": {
@@ -17,11 +17,11 @@
       "max_age_days": 3
     },
     "mastercard": {
-      "name": "Mastercard", 
+      "name": "Mastercard",
       "enabled": true,
       "priority": "high",
       "pages": [
-        "https://www.mastercard.com/news/newsroom/press-releases/",
+        "https://www.mastercard.com/us/en/news-and-trends/press.html",
         "https://investor.mastercard.com/investor-news/default.aspx"
       ],
       "feeds": [],
@@ -31,7 +31,7 @@
     "paypal": {
       "name": "PayPal",
       "enabled": true,
-      "priority": "high", 
+      "priority": "high",
       "pages": [
         "https://newsroom.paypal-corp.com/",
         "https://investor.pypl.com/news-and-events/news/default.aspx"
@@ -49,19 +49,24 @@
         "https://stripe.com/newsroom",
         "https://stripe.com/blog"
       ],
-      "feeds": ["https://stripe.com/blog/feed.rss"],
+      "feeds": [
+        "https://stripe.com/blog/feed.rss"
+      ],
       "max_articles": 3,
       "max_age_days": 3
     },
     "affirm": {
       "name": "Affirm",
-      "enabled": false,
+      "enabled": true,
       "priority": "medium",
-      "pages": ["https://www.affirm.com/about/news"],
+      "pages": [
+        "https://investors.affirm.com/news-events/newsroom",
+        "https://investors.affirm.com/news-releases",
+        "https://www.affirm.com/about/news"
+      ],
       "feeds": [],
       "max_articles": 3,
-      "max_age_days": 3,
-      "disable_reason": "Investor page timeout issues"
+      "max_age_days": 3
     },
     "toast": {
       "name": "Toast",
@@ -91,7 +96,9 @@
       "name": "Fiserv (FI)",
       "enabled": true,
       "priority": "medium",
-      "pages": ["https://newsroom.fiserv.com/"],
+      "pages": [
+        "https://newsroom.fiserv.com/"
+      ],
       "feeds": [],
       "max_articles": 3,
       "max_age_days": 3
@@ -99,8 +106,10 @@
     "fis": {
       "name": "FIS",
       "enabled": true,
-      "priority": "medium", 
-      "pages": ["https://www.fisglobal.com/en/about-us/media-room"],
+      "priority": "medium",
+      "pages": [
+        "https://www.fisglobal.com/en/about-us/media-room"
+      ],
       "feeds": [],
       "max_articles": 3,
       "max_age_days": 3
@@ -109,7 +118,9 @@
       "name": "Global Payments (GPN)",
       "enabled": true,
       "priority": "medium",
-      "pages": ["https://investors.globalpayments.com/news-events/press-releases"],
+      "pages": [
+        "https://investors.globalpayments.com/news-events/press-releases"
+      ],
       "feeds": [],
       "max_articles": 3,
       "max_age_days": 3
@@ -121,7 +132,7 @@
     "priority": "high",
     "keywords": [
       "instant payments",
-      "real-time payments", 
+      "real-time payments",
       "RTP",
       "FedNow",
       "faster payments",
@@ -147,11 +158,11 @@
   "a2a_open_banking": {
     "name": "A2A & Open Banking",
     "description": "Account-to-account payments, open banking APIs, and financial data sharing",
-    "priority": "high", 
+    "priority": "high",
     "keywords": [
       "open banking",
       "PSD2",
-      "PSD3", 
+      "PSD3",
       "account to account",
       "A2A payments",
       "bank-to-bank",
@@ -180,7 +191,7 @@
     "priority": "high",
     "keywords": [
       "stablecoin",
-      "CBDC", 
+      "CBDC",
       "central bank digital currency",
       "digital dollar",
       "digital euro",
@@ -209,7 +220,7 @@
     "priority": "medium",
     "keywords": [
       "SoftPOS",
-      "tap to pay", 
+      "tap to pay",
       "contactless payments",
       "mobile POS",
       "mPOS",
@@ -226,7 +237,7 @@
       "https://www.pymnts.com/feed/"
     ],
     "min_relevance_score": 0.35,
-    "email_relevance_score": 0.50,
+    "email_relevance_score": 0.5,
     "max_articles": 6,
     "google_search_enabled": true,
     "include_social": true
@@ -237,7 +248,7 @@
     "priority": "medium",
     "keywords": [
       "cross border payments",
-      "international payments", 
+      "international payments",
       "remittance",
       "FX",
       "foreign exchange",
@@ -268,7 +279,7 @@
       "BNPL",
       "installment payments",
       "Klarna",
-      "Afterpay", 
+      "Afterpay",
       "Affirm",
       "Sezzle",
       "deferred payments",
@@ -295,7 +306,7 @@
     "keywords": [
       "payment orchestration",
       "smart routing",
-      "payment optimization", 
+      "payment optimization",
       "payment routing",
       "payment intelligence",
       "transaction routing",
@@ -324,7 +335,7 @@
       "machine learning payments",
       "AML",
       "anti-money laundering",
-      "fraud detection", 
+      "fraud detection",
       "risk management",
       "transaction monitoring",
       "behavioral analytics",
@@ -344,7 +355,7 @@
     "include_social": false
   },
   "pci_dss": {
-    "name": "PCI DSS & Payment Security", 
+    "name": "PCI DSS & Payment Security",
     "description": "Payment card industry security standards, compliance, and data protection",
     "priority": "medium",
     "keywords": [
@@ -354,7 +365,7 @@
       "compliance",
       "cybersecurity",
       "payment card security",
-      "data breach", 
+      "data breach",
       "security standards",
       "financial security",
       "payment data protection",
@@ -365,8 +376,8 @@
       "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
       "https://www.americanbanker.com/feed"
     ],
-    "min_relevance_score": 0.30,
-    "email_relevance_score": 0.50,
+    "min_relevance_score": 0.3,
+    "email_relevance_score": 0.5,
     "max_articles": 5,
     "google_search_enabled": true,
     "include_social": false
@@ -379,7 +390,7 @@
       "digital wallet",
       "mobile wallet",
       "NFC payments",
-      "Apple Pay", 
+      "Apple Pay",
       "Google Pay",
       "Samsung Pay",
       "mobile payments",
@@ -421,8 +432,8 @@
       "https://www.pymnts.com/feed/",
       "https://www.americanbanker.com/feed"
     ],
-    "min_relevance_score": 0.30,
-    "email_relevance_score": 0.50,
+    "min_relevance_score": 0.3,
+    "email_relevance_score": 0.5,
     "max_articles": 5,
     "google_search_enabled": true,
     "include_social": true
@@ -437,7 +448,7 @@
       "compliance automation",
       "financial regulations",
       "regulatory reporting",
-      "KYC automation", 
+      "KYC automation",
       "AML compliance",
       "regulatory compliance",
       "compliance technology",
