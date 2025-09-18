@@ -34,13 +34,15 @@ jobs:
             echo "ERROR: unified_config.json not found"
             exit 1
           fi
-          
-      - name: Download previous database
-        uses: actions/download-artifact@v4
+
+      # ✅ FIX: use cache (not artifact) to restore DB across runs
+      - name: Restore database (cache across runs)
+        uses: actions/cache@v4
         with:
-          name: unified-fintech-database
-          path: .
-        continue-on-error: true
+          path: unified_fintech_intelligence.db
+          key: db-${{ runner.os }}-v1-${{ github.run_id }}
+          restore-keys: |
+            db-${{ runner.os }}-v1-
         
       - name: Check for existing database
         run: |
@@ -89,6 +91,7 @@ jobs:
           LOG_LEVEL: ${{ vars.LOG_LEVEL || 'INFO' }}
           TZ: America/New_York
         run: |
+          set -o pipefail
           echo "Starting Unified FinTech Intelligence at $(date)"
           echo "System configuration:"
           echo "  Companies: ${COMPANIES_ENABLED} | Trends: ${TRENDS_ENABLED} | LLM: ${LLM_INTEGRATION_ENABLED}"
@@ -97,7 +100,8 @@ jobs:
           echo "  Model: ${LLM_MODEL} | Google limit: ${GOOGLE_SEARCH_DAILY_LIMIT} queries"
           echo ""
           
-          python Unified_FinTech_Intelligence.py --verbose
+          # ✅ FIX: always create a log file so it can be uploaded
+          python Unified_FinTech_Intelligence.py --verbose 2>&1 | tee unified_fintech_intelligence.log
           
           echo ""
           echo "Intelligence system completed at $(date)"
