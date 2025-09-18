@@ -1,28 +1,24 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Unified FinTech Intelligence System v3.0.2 - Bug Fixes
-=====================================================================================================
+UNIFIED FinTech Daily Update System v3.2.0 - Production Ready with Full LLM Integration
+=======================================================================================
 
-BUG FIXES v3.0.2:
-1. FIXED: Database column 'processed_date' missing error - added to base table creation
-2. FIXED: HTTP timeout issues with improved retry logic and domain-specific timeouts
-3. FIXED: DNS resolution error for investor.fisglobal.com - updated to correct URL
-4. ENHANCED: Better error handling for network connectivity issues
-5. ENHANCED: More robust database migration with proper column checking
-6. FIXED: Database index creation warnings by checking column existence before creating indexes
-7. FIXED: DateTime comparison errors by ensuring all datetime objects are timezone-aware
+COMPREHENSIVE FEATURES:
+- Company Updates: 10 major fintech companies with web scraping + RSS
+- Trend Analysis: 10 key fintech trends with Google Search + RSS  
+- Full LLM Integration: Title enhancement + summarization for BOTH companies and trends
+- Advanced Email: Professional card layout with quality scoring
+- Production Database: Connection pooling + robust error handling
+- Region Filtering: US/EU focus, excludes Asia/Africa
+- Semantic Scoring: LLM-powered relevance evaluation
 
-CRITICAL FIXES:
-- Fixed "no such column: processed_date" by ensuring it's in base table creation
-- Fixed affirm.com timeout by increasing domain-specific timeouts
-- Fixed fisglobal.com DNS error by correcting URL to investors.fisglobal.com
-- Added fallback handling for network errors
-- Improved database column existence checking before queries
-- Fixed timezone-naive vs timezone-aware datetime comparison errors
-- Fixed database index creation to check for column existence first
+COMPANIES MONITORED:
+Visa, Mastercard, PayPal, Stripe, Affirm, Toast, Adyen, Fiserv, FIS, Global Payments
 
-All other functionality remains identical to v3.0.1
+TRENDS MONITORED:  
+Instant Payments, A2A/Open Banking, Stablecoins, SoftPOS, Cross-Border, BNPL,
+Payment Orchestration, Fraud AI, PCI Security, Digital Wallets
 """
 
 import asyncio
@@ -44,11 +40,10 @@ from dataclasses import dataclass, field
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import List, Dict, Optional, Any, Tuple, Set
-from urllib.parse import urlparse, urljoin, parse_qsl, urlencode, urlunparse
+from urllib.parse import urlparse, urljoin
 from contextlib import contextmanager
 from functools import wraps
 import random
-import socket
 
 try:
     import aiohttp
@@ -60,7 +55,6 @@ try:
     from dotenv import load_dotenv
     from dateutil import parser as dateparser
     from requests.adapters import HTTPAdapter
-    from urllib import robotparser
     from urllib3.util.retry import Retry
     import requests
 except ImportError as e:
@@ -72,61 +66,68 @@ except ImportError as e:
 load_dotenv()
 
 # Configure logging
+DEBUG_MODE = os.getenv("DEBUG_MODE", "0") == "1"
+log_level = logging.DEBUG if DEBUG_MODE else getattr(logging, os.getenv("LOG_LEVEL", "INFO"))
+
 logging.basicConfig(
-    level=getattr(logging, os.getenv("LOG_LEVEL", "INFO")),
+    level=log_level,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('unified_fintech_intelligence.log', encoding='utf-8'),
+        logging.FileHandler('unified_fintech_update.log', encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
 logger = logging.getLogger(__name__)
 
 # --------------------------------------------------------------------------------------
-# Global Constants and Configuration
+# FIXED: Timezone-aware datetime utilities
 # --------------------------------------------------------------------------------------
 
-USER_AGENT = "unified-fintech-intelligence/3.0 (+mailto:intelligence@example.org)"
-HEADERS = {"User-Agent": USER_AGENT, "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.8", "Connection": "keep-alive"}
+def utc_now() -> datetime.datetime:
+    """Get current UTC time (timezone-aware)"""
+    return datetime.datetime.now(datetime.timezone.utc)
 
-SAFE_SCHEMES = ("http", "https")
-# FIXED: Increased timeouts for problematic domains
-DOMAIN_TIMEOUTS = {
-    'investors.affirm.com': (8, 15),  # Increased from (4, 8)
-    'investors.fisglobal.com': (8, 15),  # Fixed domain name and increased timeout
-    'investor.fisglobal.com': (8, 15),  # Legacy support
-}
-TRACKING_PARAMS = {
-    "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-    "gclid", "fbclid", "mc_cid", "mc_eid", "msclkid", "_hsenc", "_hsmi", "ref"
-}
+def ensure_utc(dt: Optional[datetime.datetime]) -> Optional[datetime.datetime]:
+    """Ensure datetime is timezone-aware UTC"""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        # Assume naive datetime is UTC
+        return dt.replace(tzinfo=datetime.timezone.utc)
+    else:
+        # Convert to UTC
+        return dt.astimezone(datetime.timezone.utc)
+
+def utc_date_filter(days: int) -> datetime.datetime:
+    """Get UTC cutoff date for filtering (timezone-aware)"""
+    return utc_now() - datetime.timedelta(days=days)
 
 # --------------------------------------------------------------------------------------
 # Custom Exceptions
 # --------------------------------------------------------------------------------------
 
-class IntelligenceSystemError(Exception):
-    """Base exception for intelligence system errors"""
+class DigestSystemError(Exception):
+    """Base exception for digest system errors"""
     pass
 
-class ConfigurationError(IntelligenceSystemError):
+class ConfigurationError(DigestSystemError):
     """Configuration validation errors"""
     pass
 
-class DatabaseError(IntelligenceSystemError):
+class DatabaseError(DigestSystemError):
     """Database operation errors"""
     pass
 
-class ContentProcessingError(IntelligenceSystemError):
+class ContentProcessingError(DigestSystemError):
     """Content processing errors"""
     pass
 
-class APIError(IntelligenceSystemError):
+class APIError(DigestSystemError):
     """External API errors"""
     pass
 
 # --------------------------------------------------------------------------------------
-# Enhanced Configuration Management
+# Enhanced Configuration Management with Validation
 # --------------------------------------------------------------------------------------
 
 class ConfigValidator:
@@ -137,15 +138,16 @@ class ConfigValidator:
         """Validate configuration and return list of errors"""
         errors = []
         
-        # Required API keys
-        if config.llm_enabled and not config.llm_api_key:
-            errors.append("LLM_API_KEY required when LLM_INTEGRATION_ENABLED=1")
-        
+        # Required API keys for trends
         if config.trends_enabled and not config.google_api_key:
-            errors.append("GOOGLE_SEARCH_API_KEY required when TRENDS_ENABLED=1")
+            errors.append("GOOGLE_SEARCH_API_KEY required when trends enabled")
         
         if config.trends_enabled and not config.google_search_engine_id:
-            errors.append("GOOGLE_SEARCH_ENGINE_ID required when TRENDS_ENABLED=1")
+            errors.append("GOOGLE_SEARCH_ENGINE_ID required when trends enabled")
+        
+        # LLM configuration
+        if config.llm_enabled and not config.llm_api_key:
+            errors.append("LLM_API_KEY required when LLM_INTEGRATION_ENABLED=1")
         
         # Email configuration
         if config.email_recipients and not config.smtp_user:
@@ -158,12 +160,12 @@ class ConfigValidator:
         if not 0.0 <= config.llm_temperature <= 2.0:
             errors.append("LLM_TEMPERATURE must be between 0.0 and 2.0")
         
-        if config.keep_historical_days < 1:
-            errors.append("KEEP_HISTORICAL_DAYS must be at least 1")
+        if config.max_age_days < 1:
+            errors.append("MAX_AGE_DAYS must be at least 1")
         
         # Validate new limits
-        if not 10 <= config.max_email_articles <= 100:
-            errors.append("MAX_EMAIL_ARTICLES must be between 10 and 100")
+        if not 10 <= config.max_email_articles <= 50:
+            errors.append("MAX_EMAIL_ARTICLES must be between 10 and 50")
         
         if not 20 <= config.semantic_total_limit <= 200:
             errors.append("SEMANTIC_TOTAL_LIMIT must be between 20 and 200")
@@ -171,75 +173,64 @@ class ConfigValidator:
         return errors
 
 class UnifiedConfig:
-    """Unified configuration management for both company and trends monitoring"""
+    """Unified configuration for both company and trend monitoring with validation"""
     
     def __init__(self):
-        # Execution modes
-        self.companies_enabled = os.getenv("COMPANIES_ENABLED", "1") == "1"
-        self.trends_enabled = os.getenv("TRENDS_ENABLED", "1") == "1"
-        
         # Core settings
-        self.relevance_threshold = float(os.getenv("RELEVANCE_THRESHOLD", "0.58"))
-        self.semantic_scoring_enabled = os.getenv("SEMANTIC_SCORING_ENABLED", "1") == "1"
-        self.keyword_expansion_enabled = os.getenv("KEYWORD_EXPANSION_ENABLED", "1") == "1"
-        self.strict_region_filter = os.getenv("STRICT_REGION_FILTER", "1") == "1"
-        self.keep_historical_days = self._safe_int("KEEP_HISTORICAL_DAYS", 365)
-        
-        # Email and semantic limits
-        self.max_email_articles = self._safe_int("MAX_EMAIL_ARTICLES", 40)  # Increased for combined content
-        self.semantic_total_limit = self._safe_int("SEMANTIC_TOTAL_LIMIT", 60)
+        self.max_age_days = self._safe_int("MAX_AGE_DAYS", 7)  # 7-day filter
+        self.max_email_articles = self._safe_int("MAX_EMAIL_ARTICLES", 30)
+        self.relevance_threshold = float(os.getenv("RELEVANCE_THRESHOLD", "0.55"))
         
         # Company monitoring settings
-        self.company_hours_window = self._safe_int("COMPANY_HOURS_WINDOW", 72)
-        self.company_max_age_days = self._safe_int("COMPANY_MAX_AGE_DAYS", 3)
-        self.company_max_items_per_source = self._safe_int("COMPANY_MAX_ITEMS_PER_SOURCE", 50)
+        self.companies_enabled = os.getenv("COMPANIES_ENABLED", "1") == "1"
+        self.bypass_robots_txt = os.getenv("BYPASS_ROBOTS_TXT", "1") == "1"
+        self.aggressive_scraping = os.getenv("AGGRESSIVE_SCRAPING", "1") == "1"
+        self.company_max_items_per_source = self._safe_int("COMPANY_MAX_ITEMS_PER_SOURCE", 20)
         
-        # LLM integration settings
+        # Trend monitoring settings
+        self.trends_enabled = os.getenv("TRENDS_ENABLED", "1") == "1"
+        self.semantic_scoring_enabled = os.getenv("SEMANTIC_SCORING_ENABLED", "1") == "1"
+        self.keyword_expansion_enabled = os.getenv("KEYWORD_EXPANSION_ENABLED", "1") == "1"
+        self.semantic_total_limit = self._safe_int("SEMANTIC_TOTAL_LIMIT", 40)
+        self.keep_historical_days = self._safe_int("KEEP_HISTORICAL_DAYS", 365)
+        
+        # LLM integration - ENABLED FOR BOTH COMPANIES AND TRENDS
         self.llm_enabled = os.getenv("LLM_INTEGRATION_ENABLED", "1") == "1"
         self.llm_api_key = os.getenv("LLM_API_KEY", "").strip()
         self.llm_model = os.getenv("LLM_MODEL", "gpt-4o-mini").strip()
         self.llm_temperature = float(os.getenv("LLM_TEMPERATURE", "0.1"))
-        self.llm_max_retries = self._safe_int("LLM_MAX_RETRIES", 3)
-        self.llm_batch_size = self._safe_int("LLM_BATCH_SIZE", 5)
         self.llm_max_tokens_title = self._safe_int("LLM_MAX_TOKENS_TITLE", 32)
         self.llm_max_tokens_summary = self._safe_int("LLM_MAX_TOKENS_SUMMARY", 120)
         self.llm_summary_fallback_enabled = os.getenv("LLM_SUMMARY_FALLBACK_ENABLED", "1") == "1"
         self.llm_summary_min_chars_trigger = self._safe_int("LLM_SUMMARY_MIN_CHARS_TRIGGER", 60)
         self.llm_summary_long_content_trigger = self._safe_int("LLM_SUMMARY_LONG_CONTENT_TRIGGER", 3000)
         
-        # ADDED: LLM usage limits for email generation
-        self.llm_max_title_enhancements = self._safe_int("LLM_MAX_TITLE_ENHANCEMENTS", 25)
-        self.llm_max_summaries = self._safe_int("LLM_MAX_SUMMARIES", 15)
-
-        # Google Search settings
+        # Google Search API
         self.google_api_key = os.getenv('GOOGLE_SEARCH_API_KEY', '')
         self.google_search_engine_id = os.getenv('GOOGLE_SEARCH_ENGINE_ID', '')
         self.google_daily_limit = self._safe_int('GOOGLE_SEARCH_DAILY_LIMIT', 100)
         
-        # Email settings
+        # Database and email
+        self.database_path = os.getenv('DATABASE_PATH', 'unified_fintech_update.db')
         self.smtp_host = os.getenv('SMTP_HOST', 'smtp.gmail.com')
         self.smtp_port = self._safe_int('SMTP_PORT', 587)
         self.smtp_user = os.getenv('SMTP_USER', '')
         self.smtp_password = os.getenv('SMTP_PASSWORD', '')
         self.email_recipients = [r.strip() for r in os.getenv('EMAIL_RECIPIENTS', '').split(',') if r.strip()]
         
-        # Database settings
-        self.database_path = os.getenv('DATABASE_PATH', 'unified_fintech_intelligence.db')
-        
-        # Trend config JSON (optional)
-        self.trend_config_json = os.getenv('TREND_CONFIG_JSON', 'trend_config.json')
+        # Region filtering
+        self.strict_region_filter = os.getenv("STRICT_REGION_FILTER", "1") == "1"
         
         # Validate configuration
         self._validate()
         
-        logger.info(f"Unified configuration loaded - Companies: {'ENABLED' if self.companies_enabled else 'DISABLED'}")
+        logger.info(f"Unified config loaded - Age limit: {self.max_age_days} days")
+        logger.info(f"Companies: {'ENABLED' if self.companies_enabled else 'DISABLED'}")
         logger.info(f"Trends: {'ENABLED' if self.trends_enabled else 'DISABLED'}")
-        logger.info(f"LLM: {'ENABLED' if self.llm_enabled else 'DISABLED'} â€¢ Model: {self.llm_model}")
+        logger.info(f"LLM: {'ENABLED' if self.llm_enabled else 'DISABLED'} • Model: {self.llm_model}")
         logger.info(f"Semantic scoring: {'ENABLED' if self.semantic_scoring_enabled else 'DISABLED'} (limit: {self.semantic_total_limit})")
-        logger.info(f"Email limit: {self.max_email_articles} articles")
     
     def _safe_int(self, env_var: str, default: int) -> int:
-        """Safely get integer from environment variable"""
         try:
             value = os.getenv(env_var, str(default))
             return int(value) if value and str(value).strip() else default
@@ -253,89 +244,6 @@ class UnifiedConfig:
         if errors:
             error_msg = "Configuration validation failed:\n" + "\n".join(f"  - {error}" for error in errors)
             raise ConfigurationError(error_msg)
-
-# --------------------------------------------------------------------------------------
-# Company Configuration (FIXED URLs)
-# --------------------------------------------------------------------------------------
-
-@dataclass(frozen=True)
-class Company:
-    key: str
-    name: str
-    pages: List[str]
-    feeds: List[str]
-
-# FIXED: Removed broken URLs based on error logs
-COMPANIES: List[Company] = [
-    Company("visa", "Visa",
-            pages=["https://usa.visa.com/about-visa/newsroom.html",
-                   "https://investor.visa.com/news/default.aspx"],
-            feeds=[]),
-    Company("mastercard", "Mastercard",
-            pages=["https://www.mastercard.com/news/newsroom/press-releases/",
-                   "https://investor.mastercard.com/investor-news/default.aspx"],
-            feeds=[]),
-    Company("paypal", "PayPal",
-            pages=["https://newsroom.paypal-corp.com/",
-                   "https://investor.pypl.com/news-and-events/news/default.aspx"],
-            feeds=[]),
-    Company("stripe", "Stripe",
-            pages=["https://stripe.com/newsroom/news",
-                   "https://stripe.com/newsroom",
-                   "https://stripe.com/blog"],
-            feeds=["https://stripe.com/blog/feed.rss"]),
-    Company("affirm", "Affirm",
-            pages=["https://www.affirm.com/about/news"],  # Removed problematic investor page
-            feeds=[]),
-    Company("toast", "Toast",
-            pages=["https://investors.toasttab.com/news/default.aspx",
-                   "https://pos.toasttab.com/blog/news"],
-            feeds=[]),
-    Company("adyen", "Adyen",
-            pages=["https://www.adyen.com/press-and-media",
-                   "https://www.adyen.com/investor-relations"],  # Removed broken press-releases URL
-            feeds=[]),
-    Company("fiserv", "Fiserv (FI)",
-            pages=["https://newsroom.fiserv.com/"],  # Removed broken investor URL
-            feeds=[]),
-    Company("fis", "FIS",
-            pages=["https://www.fisglobal.com/en/about-us/media-room"],  # Removed broken investor URL
-            feeds=[]),
-    Company("gpn", "Global Payments (GPN)",
-            pages=["https://investors.globalpayments.com/news-events/press-releases"],  # Removed broken URL
-            feeds=[]),
-]
-
-# --------------------------------------------------------------------------------------
-# URL Utilities
-# --------------------------------------------------------------------------------------
-
-def is_safe_url(u: str) -> bool:
-    try:
-        p = urlparse(u)
-        return p.scheme in SAFE_SCHEMES and bool(p.netloc)
-    except Exception:
-        return False
-
-def canonicalize_url(u: str) -> str:
-    """Normalize scheme/host, drop fragment & common tracking params, sort query."""
-    try:
-        p = urlparse(u)
-        scheme = p.scheme.lower()
-        netloc = p.netloc.lower()
-        path = p.path or "/"
-        path = re.sub(r"/{2,}", "/", path)
-        q = [(k, v) for (k, v) in parse_qsl(p.query, keep_blank_values=True) if k not in TRACKING_PARAMS]
-        q.sort()
-        return urlunparse((scheme, netloc, path, "", urlencode(q), ""))
-    except Exception:
-        return (u or "").strip()
-
-def get_domain(url: str) -> str:
-    try:
-        return urlparse(url).netloc
-    except Exception:
-        return ""
 
 # --------------------------------------------------------------------------------------
 # Enhanced Region Filter
@@ -365,10 +273,9 @@ class EnhancedRegionFilter:
             "bankofengland.co.uk", "ec.europa.eu", "theclearinghouse.org",
             "bis.org", "eba.europa.eu", "esma.europa.eu", "sec.gov",
             "visa.com", "mastercard.com", "americanexpress.com", "discover.com", 
-            "amex.com", "unionpay.com",
-            "stripe.com", "adyen.com", "checkout.com", "squareup.com", 
-            "wise.com", "revolut.com", "paypal.com", "klarna.com",
-            "n26.com", "monzo.com", "starling.com", "plaid.com",
+            "amex.com", "stripe.com", "adyen.com", "checkout.com", "squareup.com", 
+            "wise.com", "revolut.com", "paypal.com", "klarna.com", "affirm.com",
+            "n26.com", "monzo.com", "starling.com", "plaid.com", "toasttab.com",
             "paymentsdive.com", "finextra.com", "thepaypers.com", 
             "fintechfutures.com", "americanbanker.com", "reuters.com",
             "bloomberg.com", "ft.com", "wsj.com", "forbes.com",
@@ -419,11 +326,11 @@ class EnhancedRegionFilter:
         return 0.8
 
 # --------------------------------------------------------------------------------------
-# Database Manager with Unified Schema - FIXED processed_date issue
+# Database Manager with Connection Pooling
 # --------------------------------------------------------------------------------------
 
 class DatabaseConnectionPool:
-    """Connection pool for SQLite database"""
+    """Fixed connection pool for SQLite database"""
     
     def __init__(self, db_path: str, max_connections: int = 5):
         self.db_path = db_path
@@ -534,7 +441,7 @@ class DatabaseConnectionPool:
             raise DatabaseError(f"Database operation failed: {e}")
 
 class UnifiedDatabaseManager:
-    """FIXED: Database manager with proper processed_date column handling"""
+    """Enhanced SQLite database with connection pooling for unified system"""
     
     def __init__(self, config: UnifiedConfig):
         self.db_path = config.database_path
@@ -580,7 +487,7 @@ class UnifiedDatabaseManager:
         try:
             self._create_tables()
             self._create_indexes()
-            logger.info(f"Unified database initialized: {self.db_path}")
+            logger.info(f"Database initialized: {self.db_path}")
         except Exception as e:
             logger.error(f"Database initialization failed: {e}")
             if self.use_connection_pool:
@@ -592,34 +499,20 @@ class UnifiedDatabaseManager:
             else:
                 raise DatabaseError(f"Database initialization failed: {e}")
     
-    def _column_exists(self, conn, table_name: str, column_name: str) -> bool:
-        """Check if a column exists in a table"""
-        try:
-            cursor = conn.execute(f"PRAGMA table_info({table_name})")
-            columns = [row[1] for row in cursor.fetchall()]
-            return column_name in columns
-        except Exception:
-            return False
-    
     def _create_tables(self):
-        """FIXED: Ensure all columns including processed_date are in base table creation"""
         with self._get_connection() as conn:
-            # FIXED: Added processed_date to the base table creation
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS articles (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     url TEXT UNIQUE NOT NULL,
-                    canonical_url TEXT NOT NULL,
                     title TEXT NOT NULL,
                     original_title TEXT,
                     enhanced_title TEXT,
                     content TEXT,
                     summary TEXT,
-                    source_type TEXT,  -- 'company', 'trend_google', 'trend_rss'
+                    source_type TEXT,  -- 'company' or 'trend'
+                    category TEXT,     -- company key or trend key
                     domain TEXT,
-                    category TEXT,  -- company key or trend key
-                    company_key TEXT,  -- for company articles
-                    trend_category TEXT,  -- for trend articles
                     relevance_score REAL,
                     semantic_relevance_score REAL DEFAULT 0.0,
                     quality_score REAL,
@@ -627,14 +520,10 @@ class UnifiedDatabaseManager:
                     word_count INTEGER,
                     content_hash TEXT,
                     published_date DATETIME,
-                    processed_date DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    search_keywords TEXT,
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    search_keywords TEXT
                 )
             ''')
-      
-            # Daily statistics
             conn.execute('''
                 CREATE TABLE IF NOT EXISTS daily_stats (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -651,119 +540,89 @@ class UnifiedDatabaseManager:
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             ''')
-            
-            # FIXED: Check each column before attempting to add it
-            columns_to_add = [
-                ('original_title', 'TEXT'),
-                ('enhanced_title', 'TEXT'),
-                ('canonical_url', 'TEXT'),
-                ('semantic_relevance_score', 'REAL DEFAULT 0.0'),
-                ('search_keywords', 'TEXT'),
-                ('category', 'TEXT'),
-                ('company_key', 'TEXT'),
-                ('trend_category', 'TEXT'),
-                ('processed_date', 'DATETIME DEFAULT CURRENT_TIMESTAMP'),
-                ('quality_score', 'REAL'),
-                ('region_confidence', 'REAL'),
-                ('word_count', 'INTEGER'),
-                ('content_hash', 'TEXT'),
-                ('published_date', 'DATETIME'),
-                ('created_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP'),
-                ('updated_at', 'DATETIME DEFAULT CURRENT_TIMESTAMP'),
-            ]
-            
-            for column_name, column_type in columns_to_add:
-                if not self._column_exists(conn, 'articles', column_name):
-                    try:
-                        conn.execute(f'ALTER TABLE articles ADD COLUMN {column_name} {column_type}')
-                        logger.debug(f"Added {column_name} column")
-                    except sqlite3.OperationalError as e:
-                        # Column might already exist or other error
-                        logger.debug(f"Could not add column {column_name}: {e}")
-
+            # Add columns if they don't exist
+            try:
+                conn.execute('ALTER TABLE articles ADD COLUMN semantic_relevance_score REAL DEFAULT 0.0')
+            except sqlite3.OperationalError:
+                pass
+    
     def _create_indexes(self):
-        """FIXED: Properly implemented _create_indexes method with column existence check"""
+        indexes = [
+            'CREATE INDEX IF NOT EXISTS idx_articles_source_type ON articles(source_type)',
+            'CREATE INDEX IF NOT EXISTS idx_articles_category ON articles(category)',
+            'CREATE INDEX IF NOT EXISTS idx_articles_created_at ON articles(created_at)',
+            'CREATE INDEX IF NOT EXISTS idx_articles_relevance ON articles(relevance_score)',
+            'CREATE INDEX IF NOT EXISTS idx_articles_semantic_relevance ON articles(semantic_relevance_score)',
+            'CREATE INDEX IF NOT EXISTS idx_articles_quality ON articles(quality_score)',
+            'CREATE INDEX IF NOT EXISTS idx_articles_domain ON articles(domain)',
+            'CREATE INDEX IF NOT EXISTS idx_articles_hash ON articles(content_hash)',
+            'CREATE INDEX IF NOT EXISTS idx_daily_stats_date ON daily_stats(date)',
+        ]
         with self._get_connection() as conn:
-            # Check if processed_date column exists before creating indexes on it
-            has_processed_date = self._column_exists(conn, 'articles', 'processed_date')
-            
-            # Base indexes that don't depend on processed_date
-            base_indexes = [
-                'CREATE INDEX IF NOT EXISTS idx_articles_source_type ON articles(source_type)',
-                'CREATE INDEX IF NOT EXISTS idx_articles_relevance ON articles(relevance_score)',
-                'CREATE INDEX IF NOT EXISTS idx_articles_semantic_relevance ON articles(semantic_relevance_score)',
-                'CREATE INDEX IF NOT EXISTS idx_articles_quality ON articles(quality_score)',
-                'CREATE INDEX IF NOT EXISTS idx_articles_domain ON articles(domain)',
-                'CREATE INDEX IF NOT EXISTS idx_articles_hash ON articles(content_hash)',
-                'CREATE INDEX IF NOT EXISTS idx_articles_canonical ON articles(canonical_url)',
-                'CREATE INDEX IF NOT EXISTS idx_daily_stats_date ON daily_stats(date)',
-            ]
-            
-            # Conditional indexes that require processed_date column
-            date_indexes = []
-            if has_processed_date:
-                date_indexes = [
-                    'CREATE INDEX IF NOT EXISTS idx_articles_category_date ON articles(category, processed_date)',
-                    'CREATE INDEX IF NOT EXISTS idx_articles_company_date ON articles(company_key, processed_date)',
-                    'CREATE INDEX IF NOT EXISTS idx_articles_trend_date ON articles(trend_category, processed_date)',
-                ]
-            else:
-                # Fallback to created_at if processed_date doesn't exist
-                date_indexes = [
-                    'CREATE INDEX IF NOT EXISTS idx_articles_category_date ON articles(category, created_at)',
-                    'CREATE INDEX IF NOT EXISTS idx_articles_company_date ON articles(company_key, created_at)',
-                    'CREATE INDEX IF NOT EXISTS idx_articles_trend_date ON articles(trend_category, created_at)',
-                ]
-            
-            all_indexes = base_indexes + date_indexes
-            
-            for index_sql in all_indexes:
+            for index_sql in indexes:
                 try:
                     conn.execute(index_sql)
                 except Exception as e:
                     logger.warning(f"Index creation failed: {e}")
     
-    def save_article(self, article_data: Dict[str, Any]) -> bool:
-        """Save article to unified database"""
+    def save_article(self, article: 'ContentSource') -> bool:
         try:
+            keywords_json = json.dumps(article.search_keywords) if article.search_keywords else "[]"
+            
+            # FIXED: Ensure timezone-aware datetime for database storage
+            published_date_str = None
+            if article.published_date:
+                utc_date = ensure_utc(article.published_date)
+                published_date_str = utc_date.isoformat() if utc_date else None
+            
             with self._get_connection() as conn:
                 conn.execute('SELECT 1').fetchone()
                 
                 conn.execute('''
                     INSERT OR REPLACE INTO articles 
-                    (url, canonical_url, title, original_title, enhanced_title, content, summary, 
-                     source_type, domain, category, company_key, trend_category, relevance_score, 
-                     semantic_relevance_score, quality_score, region_confidence, word_count, 
-                     content_hash, published_date, search_keywords, updated_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    (url, title, original_title, enhanced_title, content, summary, source_type, 
+                     category, domain, relevance_score, semantic_relevance_score, quality_score, 
+                     region_confidence, word_count, content_hash, published_date, search_keywords)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
-                    article_data['url'], 
-                    article_data.get('canonical_url', article_data['url']),
-                    article_data['title'], 
-                    article_data.get('original_title'),
-                    article_data.get('enhanced_title'),
-                    article_data.get('content', ''), 
-                    article_data.get('summary', ''),
-                    article_data['source_type'], 
-                    article_data.get('domain', ''),
-                    article_data.get('category', ''), 
-                    article_data.get('company_key'),
-                    article_data.get('trend_category'), 
-                    article_data.get('relevance_score', 0.0),
-                    article_data.get('semantic_relevance_score', 0.0), 
-                    article_data.get('quality_score', 0.0),
-                    article_data.get('region_confidence', 1.0), 
-                    article_data.get('word_count', 0),
-                    article_data.get('content_hash', ''), 
-                    article_data.get('published_date'),
-                    json.dumps(article_data.get('search_keywords', []), ensure_ascii=False)
+                    article.url, article.title, article.original_title, article.enhanced_title,
+                    article.content, article.summary, article.source_type, article.category,
+                    article.domain, article.relevance_score, article.semantic_relevance_score,
+                    article.quality_score, article.region_confidence, article.word_count,
+                    article.content_hash, published_date_str, keywords_json
                 ))
                 
-                logger.debug(f"Saved article: {article_data['title'][:50]}...")
+                logger.debug(f"Saved article: {article.title[:50]}...")
             return True
             
         except Exception as e:
-            logger.error(f"Failed to save article '{article_data['title'][:50]}...': {e}")
+            logger.error(f"Failed to save article '{article.title[:50]}...': {e}")
+            
+            if self.use_connection_pool:
+                try:
+                    logger.warning("Retrying with direct connection")
+                    conn = self._get_connection_direct()
+                    try:
+                        conn.execute('''
+                            INSERT OR REPLACE INTO articles 
+                            (url, title, original_title, enhanced_title, content, summary, source_type, 
+                             category, domain, relevance_score, semantic_relevance_score, quality_score, 
+                             region_confidence, word_count, content_hash, published_date, search_keywords)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (
+                            article.url, article.title, article.original_title, article.enhanced_title,
+                            article.content, article.summary, article.source_type, article.category,
+                            article.domain, article.relevance_score, article.semantic_relevance_score,
+                            article.quality_score, article.region_confidence, article.word_count,
+                            article.content_hash, published_date_str, keywords_json
+                        ))
+                        logger.info("Fallback save successful")
+                        return True
+                    finally:
+                        conn.close()
+                except Exception as e2:
+                    logger.error(f"Fallback save also failed: {e2}")
+                    
             return False
     
     def save_daily_stats(self, stats: Dict[str, Any]) -> bool:
@@ -772,19 +631,14 @@ class UnifiedDatabaseManager:
             with self._get_connection() as conn:
                 conn.execute('''
                     INSERT OR REPLACE INTO daily_stats
-                    (date, total_articles, company_articles, trend_articles, google_articles, rss_articles,
+                    (date, total_articles, company_articles, trend_articles, google_articles, rss_articles, 
                      avg_relevance, avg_semantic_relevance, processing_time, email_articles)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ''', (
-                    today, 
-                    stats.get('total_articles', 0), 
-                    stats.get('company_articles', 0),
-                    stats.get('trend_articles', 0), 
-                    stats.get('google_articles', 0),
-                    stats.get('rss_articles', 0), 
-                    stats.get('avg_relevance', 0.0),
-                    stats.get('avg_semantic_relevance', 0.0), 
-                    stats.get('processing_time', 0.0), 
+                    today, stats.get('total_articles', 0), stats.get('company_articles', 0),
+                    stats.get('trend_articles', 0), stats.get('google_articles', 0),
+                    stats.get('rss_articles', 0), stats.get('avg_relevance', 0.0),
+                    stats.get('avg_semantic_relevance', 0.0), stats.get('processing_time', 0.0), 
                     stats.get('email_articles', 0)
                 ))
             return True
@@ -796,99 +650,20 @@ class UnifiedDatabaseManager:
         try:
             cutoff_date = datetime.date.today() - datetime.timedelta(days=days)
             with self._get_connection() as conn:
-                # FIXED: Check if processed_date column exists before using it
-                if self._column_exists(conn, 'articles', 'processed_date'):
-                    hashes = conn.execute('''
-                        SELECT content_hash FROM articles 
-                        WHERE processed_date >= ? AND content_hash IS NOT NULL
-                    ''', (cutoff_date,)).fetchall()
-                else:
-                    # Fallback to created_at if processed_date doesn't exist
-                    hashes = conn.execute('''
-                        SELECT content_hash FROM articles 
-                        WHERE created_at >= ? AND content_hash IS NOT NULL
-                    ''', (cutoff_date,)).fetchall()
+                hashes = conn.execute('''
+                    SELECT content_hash FROM articles 
+                    WHERE created_at >= ? AND content_hash IS NOT NULL
+                ''', (cutoff_date,)).fetchall()
             return {h[0] for h in hashes}
         except Exception as e:
             logger.error(f"Failed to get recent hashes: {e}")
             return set()
     
-    def get_recent_articles_for_email(self, hours: int = 72, max_age_days: int = 3) -> Dict[str, List[Dict]]:
-        """FIXED: 3-day limit for company articles, existing logic for trends"""
-        try:
-            now_utc = datetime.datetime.now()
-            
-            # FIXED: Company articles limited to 3 days max
-            company_cutoff = now_utc - datetime.timedelta(days=3)
-            
-            # Trend articles keep existing logic
-            cutoff_hours = now_utc - datetime.timedelta(hours=hours)
-            cutoff_days_cap = now_utc - datetime.timedelta(days=max_age_days)
-            trend_cutoff = max(cutoff_hours, cutoff_days_cap)
-            
-            with self._get_connection() as conn:
-                # FIXED: Check if processed_date column exists
-                date_column = 'processed_date' if self._column_exists(conn, 'articles', 'processed_date') else 'created_at'
-                
-                # FIXED: Company articles with 3-day cutoff
-                company_cursor = conn.execute(f'''
-                    SELECT * FROM articles 
-                    WHERE source_type = 'company' 
-                    AND {date_column} >= ? 
-                    ORDER BY quality_score DESC, {date_column} DESC
-                ''', (company_cutoff,))
-                company_results = company_cursor.fetchall()
-                
-                # Trend articles with existing logic
-                trend_cursor = conn.execute(f'''
-                    SELECT * FROM articles 
-                    WHERE source_type IN ('trend_google', 'trend_rss') 
-                    AND {date_column} >= ? 
-                    AND relevance_score >= 0.45
-                    ORDER BY quality_score DESC, {date_column} DESC
-                ''', (trend_cutoff,))
-                trend_results = trend_cursor.fetchall()
-                
-                # FIXED: Get columns from cursor description, not connection
-                columns = [desc[0] for desc in company_cursor.description] if company_results else []
-                if not columns and trend_results:
-                    columns = [desc[0] for desc in trend_cursor.description]
-                
-                company_articles = []
-                for row in company_results:
-                    article_dict = dict(zip(columns, row))
-                    if article_dict.get('search_keywords'):
-                        try:
-                            article_dict['search_keywords'] = json.loads(article_dict['search_keywords'])
-                        except:
-                            article_dict['search_keywords'] = []
-                    company_articles.append(article_dict)
-                
-                trend_articles = []
-                for row in trend_results:
-                    article_dict = dict(zip(columns, row))
-                    if article_dict.get('search_keywords'):
-                        try:
-                            article_dict['search_keywords'] = json.loads(article_dict['search_keywords'])
-                        except:
-                            article_dict['search_keywords'] = []
-                    trend_articles.append(article_dict)
-                
-                return {
-                    'company_articles': company_articles,
-                    'trend_articles': trend_articles
-                }
-        except Exception as e:
-            logger.error(f"Failed to get recent articles: {e}")
-            return {'company_articles': [], 'trend_articles': []}
-    
     def cleanup_old_data(self):
         try:
             cutoff_date = datetime.date.today() - datetime.timedelta(days=self.keep_days)
             with self._get_connection() as conn:
-                # FIXED: Use appropriate date column for cleanup
-                date_column = 'processed_date' if self._column_exists(conn, 'articles', 'processed_date') else 'created_at'
-                result = conn.execute(f'DELETE FROM articles WHERE {date_column} < ?', (cutoff_date,))
+                result = conn.execute('DELETE FROM articles WHERE created_at < ?', (cutoff_date,))
                 deleted_articles = result.rowcount
                 conn.execute('DELETE FROM daily_stats WHERE date < ?', (cutoff_date,))
                 conn.execute('VACUUM')
@@ -902,37 +677,18 @@ class UnifiedDatabaseManager:
             stats = {}
             with self._get_connection() as conn:
                 stats['total_articles'] = conn.execute('SELECT COUNT(*) FROM articles').fetchone()[0]
-                
-                # Company stats
-                company_counts = conn.execute('''
-                    SELECT company_key, COUNT(*) FROM articles 
-                    WHERE source_type = 'company' AND company_key IS NOT NULL
-                    GROUP BY company_key ORDER BY COUNT(*) DESC
-                ''').fetchall()
-                stats['articles_by_company'] = dict(company_counts)
-                
-                # Trend stats
-                trend_counts = conn.execute('''
-                    SELECT trend_category, COUNT(*) FROM articles 
-                    WHERE source_type IN ('trend_google', 'trend_rss') AND trend_category IS NOT NULL
-                    GROUP BY trend_category ORDER BY COUNT(*) DESC
-                ''').fetchall()
-                stats['articles_by_trend'] = dict(trend_counts)
-                
+                stats['company_articles'] = conn.execute("SELECT COUNT(*) FROM articles WHERE source_type = 'company'").fetchone()[0]
+                stats['trend_articles'] = conn.execute("SELECT COUNT(*) FROM articles WHERE source_type = 'trend'").fetchone()[0]
                 week_ago = datetime.date.today() - datetime.timedelta(days=7)
-                date_column = 'processed_date' if self._column_exists(conn, 'articles', 'processed_date') else 'created_at'
-                stats['recent_articles'] = conn.execute(f'''
-                    SELECT COUNT(*) FROM articles WHERE {date_column} >= ?
+                stats['recent_articles'] = conn.execute('''
+                    SELECT COUNT(*) FROM articles WHERE created_at >= ?
                 ''', (week_ago,)).fetchone()[0]
-                
                 stats['high_quality_articles'] = conn.execute('''
-                    SELECT COUNT(*) FROM articles WHERE relevance_score >= 0.58
+                    SELECT COUNT(*) FROM articles WHERE relevance_score >= 0.55
                 ''').fetchone()[0]
-                
                 stats['semantic_scored_articles'] = conn.execute('''
                     SELECT COUNT(*) FROM articles WHERE semantic_relevance_score > 0
                 ''').fetchone()[0]
-                
             stats['db_size_mb'] = os.path.getsize(self.db_path) / (1024 * 1024) if os.path.exists(self.db_path) else 0
             return stats
         except Exception as e:
@@ -940,7 +696,7 @@ class UnifiedDatabaseManager:
             return {}
 
 # --------------------------------------------------------------------------------------
-# Retry Decorator
+# Retry Decorator with Exponential Backoff
 # --------------------------------------------------------------------------------------
 
 def with_retry(max_retries=3, backoff_factor=2, exceptions=(Exception,)):
@@ -962,11 +718,11 @@ def with_retry(max_retries=3, backoff_factor=2, exceptions=(Exception,)):
     return decorator
 
 # --------------------------------------------------------------------------------------
-# LLM Integration (Enhanced from fintech_digest.py)
+# ENHANCED LLM Integration with Professional Title Generation (FOR BOTH COMPANIES AND TRENDS)
 # --------------------------------------------------------------------------------------
 
 class EnhancedLLMIntegration:
-    """Enhanced LLM integration with professional title generation"""
+    """Enhanced LLM integration with professional title generation for both companies and trends"""
     
     def __init__(self, config: UnifiedConfig):
         self.config = config
@@ -1035,7 +791,7 @@ class EnhancedLLMIntegration:
 
     @with_retry(max_retries=3, exceptions=(APIError, aiohttp.ClientError))
     async def enhance_title(self, title: str, content: str = "", force: bool = False) -> str:
-        """ENHANCED: Professional title enhancement for equity research context"""
+        """ENHANCED: Professional title enhancement for equity research context - WORKS FOR BOTH COMPANIES AND TRENDS"""
         if not self.enabled or not title:
             return title
 
@@ -1066,7 +822,7 @@ class EnhancedLLMIntegration:
                 "- If a rail/reg/segment from payments, banking, fintech, regulatory, compliance, security, "
                 "digital wallet, instant payments, open banking, stablecoin, CBDC, cross-border, BNPL, "
                 "fraud prevention appears in the source text, include EXACTLY ONE of them; otherwise include none. "
-                "- 65-92 characters (HARD CAP 100). AP-like style, present tense, numerals OK. No emojis, no site names, no quotes. "
+                "- 65–92 characters (HARD CAP 100). AP-like style, present tense, numerals OK. No emojis, no site names, no quotes. "
                 "- Use ONLY information present in the provided title/snippet; do not infer or add missing details. "
                 "Return ONLY the headline text.\n\n"
                 f"Original title:\n{title}\n\n"
@@ -1087,12 +843,12 @@ class EnhancedLLMIntegration:
 
     @with_retry(max_retries=2, exceptions=(APIError, aiohttp.ClientError))
     async def generate_summary(self, content: str, title: str = "") -> str:
-        """Fallback LLM summary with retry logic"""
+        """Enhanced LLM summary generation - WORKS FOR BOTH COMPANIES AND TRENDS"""
         if not self.enabled or not self.config.llm_summary_fallback_enabled:
             return ""
         prompt = (
-            "You are a financial analyst. Summarize for a daily payments/fintech digest in 80-120 words, "
-            "2-3 sentences, neutral tone. Include one concrete detail if available ($, metric, regulation, partner, geography). "
+            "You are a financial analyst. Summarize for a daily payments/fintech digest in 80–120 words, "
+            "2–3 sentences, neutral tone. Include one concrete detail if available ($, metric, regulation, partner, geography). "
             "Focus on what happened, to whom, and why it matters (rails, economics, compliance, partnerships). "
             "No fluff, no speculation.\n\n"
             f"Title: {title}\n\nArticle text:\n{(content or '')[:8000]}"
@@ -1144,430 +900,402 @@ class EnhancedLLMIntegration:
             raise APIError(f"LLM API unexpected error: {e}")
 
 # --------------------------------------------------------------------------------------
-# HTTP Session and Utilities (FIXED timeout and error handling)
+# HTTP Utilities with Robots.txt Bypass
 # --------------------------------------------------------------------------------------
 
-SESSION = None
+class UserAgentRotator:
+    """Rotate User-Agent strings for company scraping"""
+    
+    def __init__(self):
+        self.user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:89.0) Gecko/20100101 Firefox/89.0",
+            "Mozilla/5.0 (compatible; FinancialNewsBot/1.0; +http://www.example.com/bot)",
+        ]
+        self.current_index = 0
+    
+    def get_random_user_agent(self) -> str:
+        return random.choice(self.user_agents)
 
-def get_session():
-    global SESSION
-    if SESSION is None:
-        SESSION = requests.Session()
-        SESSION.headers.update(HEADERS)
-        
-        # FIXED: Enhanced retry strategy with better connection handling
-        retry_strategy = Retry(
-            total=4,  # Increased retries
-            backoff_factor=1.5,  # More aggressive backoff
-            status_forcelist=[429, 500, 502, 503, 504], 
-            allowed_methods=["GET", "HEAD"],
-            raise_on_status=False  # Don't raise on retry exhaustion
-        )
-        adapter = HTTPAdapter(
-            max_retries=retry_strategy,
-            pool_connections=10,  # Connection pooling
-            pool_maxsize=20
-        )
-        SESSION.mount("https://", adapter)
-        SESSION.mount("http://", adapter)
-        
-        # FIXED: Set more generous timeouts for problematic domains
-        SESSION.timeout = (12, 45)  # Increased from (10, 30)
-        
-    return SESSION
+UA_ROTATOR = UserAgentRotator()
 
-def robots_allowed(target_url: str, user_agent: str = USER_AGENT) -> bool:
+def create_session_with_bypass(bypass_robots: bool = True) -> requests.Session:
+    """Create HTTP session with robots.txt bypass capabilities"""
+    session = requests.Session()
+    
+    headers = {
+        "User-Agent": UA_ROTATOR.get_random_user_agent() if bypass_robots else "unified-fintech-update/3.2",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Accept-Encoding": "gzip, deflate",
+        "Connection": "keep-alive",
+    }
+    session.headers.update(headers)
+    
+    retry_strategy = Retry(
+        total=2,
+        backoff_factor=1.5,
+        status_forcelist=[429, 500, 502, 503, 504],
+        allowed_methods=["GET", "HEAD"],
+        raise_on_status=False
+    )
+    
+    adapter = HTTPAdapter(max_retries=retry_strategy, pool_connections=10, pool_maxsize=20)
+    session.mount("https://", adapter)
+    session.mount("http://", adapter)
+    
+    return session
+
+def http_get_bypass(url: str, timeout: int = 20, bypass_robots: bool = True) -> requests.Response:
+    """HTTP GET with robots.txt bypass"""
+    session = create_session_with_bypass(bypass_robots)
+    
     try:
-        parsed = urlparse(target_url)
-        base = f"{parsed.scheme}://{parsed.netloc}"
-        rp = robotparser.RobotFileParser()
-        rp.set_url(urljoin(base, "/robots.txt"))
-        rp.read()
-        return rp.can_fetch(user_agent, target_url)
-    except Exception:
-        return True
+        url = _q4_friendly_url(url)
+        extra_headers = _domain_specific_headers(url)
+        resp = session.get(url, timeout=timeout, allow_redirects=True, headers=extra_headers or None)
+        resp.raise_for_status()
+        return resp
+    except requests.exceptions.HTTPError as e:
+        if e.response.status_code == 403 and not bypass_robots:
+            logger.info(f"403 error without bypass, retrying with bypass: {url}")
+            return http_get_bypass(url, timeout, bypass_robots=True)
+        raise
+    except Exception as e:
+        logger.error(f"HTTP GET failed for {url}: {e}")
+        raise
 
-def http_head(url: str, timeout: int | tuple = (8, 15), max_retries: int = 2) -> int:
-    """FIXED: Improved HEAD with better timeout handling"""
-    if not is_safe_url(url):
-        raise RuntimeError(f"unsafe scheme: {url}")
-    
-    # FIXED: Use domain-specific timeouts
-    domain = get_domain(url)
-    if domain in DOMAIN_TIMEOUTS:
-        timeout = DOMAIN_TIMEOUTS[domain]
-    
-    session = get_session()
-    last_exc = None
-    for attempt in range(max_retries):
+# --- Domain-specific helpers for Q4 IR and strict IR pages ---
+def _q4_friendly_url(url: str) -> str:
+    # Many Q4 IR pages serve simpler HTML when 'mobile=1' is present.
+    if "default.aspx" in url and "mobile=1" not in url:
+        sep = "&" if "?" in url else "?"
+        return f"{url}{sep}mobile=1"
+    return url
+
+def _domain_specific_headers(url: str) -> dict:
+    netloc = urlparse(url).netloc
+    headers = {}
+    if netloc.endswith(("pypl.com", "affirm.com", "toasttab.com")):
+        headers.update({
+            "Referer": f"https://{netloc}/",
+            "Upgrade-Insecure-Requests": "1",
+            "Accept-Language": "en-US,en;q=0.9",
+        })
+    return headers
+
+# --- RSS auto-discovery ---
+def autodiscover_rss(html: str, base_url: str) -> List[str]:
+    soup = BeautifulSoup(html, "html.parser")
+    feeds = []
+    for link in soup.select('link[rel="alternate"][type*="rss"], link[rel="alternate"][type*="atom"]'):
+        href = link.get("href")
+        if href:
+            feeds.append(urljoin(base_url, href))
+    # Q4-style fallbacks if nothing was advertised
+    if not feeds and ("default.aspx" in base_url or "investors." in base_url):
+        candidates = [
+            "rss/press-release.xml", "rss/news.xml", "rss/events.xml",
+            "rss-feeds", "rssfeeds", "rss/default.aspx"
+        ]
+        base = base_url.rstrip("/")
+        # try prefix path up to the domain root or investor root
+        root = base.split("/news")[0] if "/news" in base else base
+        for c in candidates:
+            feeds.append(urljoin(root + "/", c))
+    # de-dupe
+    seen, uniq = set(), []
+    for f in feeds:
+        if f not in seen:
+            uniq.append(f); seen.add(f)
+    return uniq
+
+# --- JSON-LD extraction ---
+def extract_articles_from_jsonld(html: str, base_url: str) -> List[Dict[str, str]]:
+    soup = BeautifulSoup(html, "html.parser")
+    out: List[Dict[str, str]] = []
+    for tag in soup.find_all("script", type="application/ld+json"):
         try:
-            resp = session.head(url, timeout=timeout, allow_redirects=True)
-            if resp.status_code == 405:
-                return 200
-            return resp.status_code
-        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, 
-                requests.exceptions.ReadTimeout, socket.gaierror) as e:
-            last_exc = e
-            if attempt < max_retries - 1:
-                wait_time = 2 ** attempt
-                logger.debug(f"HEAD retry {attempt + 1}/{max_retries} for {url} after {wait_time}s: {e}")
-                time.sleep(wait_time)
-        except Exception as e:
-            last_exc = e
-    raise last_exc if last_exc else RuntimeError('HEAD failed')
+            data = json.loads(tag.string or "{}")
+        except Exception:
+            continue
+        blocks = data if isinstance(data, dict) else {"@graph": data}
+        nodes = blocks.get("@graph", [blocks])
+        for n in nodes:
+            t = n.get("@type")
+            if t in ("NewsArticle", "BlogPosting", "Article"):
+                out.append({
+                    "title": (n.get("headline") or n.get("name") or "").strip(),
+                    "url": urljoin(base_url, n.get("url") or ""),
+                    "summary": (n.get("description") or "")[:500].strip(),
+                    "date": n.get("datePublished") or n.get("dateModified") or "",
+                })
+    # de-dupe by URL
+    seen, uniq = set(), []
+    for item in out:
+        u = item.get("url", "")
+        if u and u not in seen:
+            uniq.append(item); seen.add(u)
+    return uniq
 
-def http_get(url: str, timeout: int = 30, max_retries: int = 4) -> requests.Response:
-    """FIXED: Enhanced HTTP GET with better error handling"""
-    if not is_safe_url(url):
-        raise RuntimeError(f"unsafe scheme: {url}")
-    if not robots_allowed(url):
-        raise RuntimeError(f"robots.txt disallows: {url}")
-    
-    # FIXED: Get domain-specific timeout if available
-    domain = get_domain(url)
-    if domain in DOMAIN_TIMEOUTS:
-        timeout = DOMAIN_TIMEOUTS[domain]
+# --- Domain fallback parsers ---
+def parse_mastercard_press(html: str, base_url: str) -> List[Dict[str, str]]:
+    soup = BeautifulSoup(html, "html.parser")
+    items: List[Dict[str, str]] = []
+    for a in soup.select('a[href*="/press/"]'):
+        href = urljoin(base_url, a.get("href") or "")
+        # heuristic: deeper URLs are article pages, not category
+        if href.rstrip("/").count("/") < 7:
+            continue
+        title = a.get_text(strip=True)
+        if not title:
+            continue
+        wrap = a.find_parent(["article","li","div"])
+        date_el = (wrap.find(["time","span"]) if wrap else None)
+        date_txt = ""
+        if date_el:
+            date_txt = date_el.get("datetime") or date_el.get_text(strip=True)
+        items.append({"title": title, "url": href, "summary": "", "date": date_txt})
+    return items
 
-    session = get_session()
-    last_exception = None
-    
-    for attempt in range(max_retries):
-        try:
-            # FIXED: Progressively reduce timeout on retries
-            current_timeout = timeout
-            if attempt > 0:
-                if isinstance(timeout, tuple):
-                    current_timeout = (timeout[0] * 0.9, timeout[1] * 0.9)
-                else:
-                    current_timeout = timeout * 0.9
-            
-            resp = session.get(url, timeout=current_timeout, allow_redirects=True)
-            resp.raise_for_status()
-            return resp
-            
-        except (requests.exceptions.ConnectionError, requests.exceptions.Timeout, 
-                requests.exceptions.ReadTimeout, socket.gaierror) as e:
-            last_exception = e
-            if attempt == max_retries - 1:
-                logger.error(f"HTTP GET failed for {url} after {max_retries} attempts: {e}")
-                raise
-            wait_time = 2 ** attempt + random.uniform(0, 1)
-            logger.warning(f"HTTP GET retry {attempt + 1}/{max_retries} for {url} after {wait_time:.1f}s: {e}")
-            time.sleep(wait_time)
-            
-        except requests.exceptions.HTTPError as e:
-            logger.error(f"HTTP error for {url}: {e}")
-            raise
-            
-        except Exception as e:
-            last_exception = e
-            logger.error(f"Unexpected error for {url}: {e}")
-            if attempt == max_retries - 1:
-                raise
+def parse_adyen_press(html: str, base_url: str) -> List[Dict[str, str]]:
+    soup = BeautifulSoup(html, "html.parser")
+    items: List[Dict[str, str]] = []
+    for a in soup.select('a[href*="/press-and-media/"]'):
+        href = urljoin(base_url, a.get("href") or "")
+        if not href or "/press-and-media/" not in href:
+            continue
+        title = a.get_text(strip=True)
+        if not title:
+            continue
+        wrap = a.find_parent(["article","li","div"])
+        date_el = (wrap.find(["time","span"]) if wrap else None)
+        date_txt = ""
+        if date_el:
+            date_txt = date_el.get("datetime") or date_el.get_text(strip=True)
+        items.append({"title": title, "url": href, "summary": "", "date": date_txt})
+    return items
 
-def parse_date(text: str) -> Optional[datetime.datetime]:
-    """FIXED: Parse date string and return UTC timezone-aware datetime"""
+def parse_q4_list(html: str, base_url: str) -> List[Dict[str, str]]:
+    soup = BeautifulSoup(html, "html.parser")
+    items: List[Dict[str, str]] = []
+    for a in soup.select('a[href*=\"news-release\"], a[href*=\"/news-releases/\"], a[href*=\"/news/\"]'):
+        href = urljoin(base_url, a.get("href") or "")
+        title = a.get_text(" ", strip=True)
+        if not title:
+            continue
+        li = a.find_parent(["li","article","div"])
+        date_el = li.find(["time","span","p"]) if li else None
+        date_txt = date_el.get_text(strip=True) if date_el else ""
+        items.append({"title": title, "url": href, "summary": "", "date": date_txt})
+    return items
+
+
+def parse_date_robust(text: str) -> Optional[datetime.datetime]:
+    """FIXED: Robust date parsing with timezone-aware output"""
     if not text:
         return None
+        
+    text = re.sub(r'\s+', ' ', text.strip())
+    
     try:
         dt = dateparser.parse(text, fuzzy=True)
-        if not dt: 
-            return None
-        if not dt.tzinfo:
-            # If timezone-naive, assume UTC
-            dt = dt.replace(tzinfo=datetime.timezone.utc)
-        else:
-            # Convert to UTC
-            dt = dt.astimezone(datetime.timezone.utc)
-        return dt
-    except Exception:
-        return None
-
-# --------------------------------------------------------------------------------------
-# Company Monitoring System (Enhanced from daily_company_updates.py)
-# --------------------------------------------------------------------------------------
-
-class CompanyMonitoringSystem:
-    """Enhanced company monitoring system"""
+        if dt:
+            return ensure_utc(dt)  # FIXED: Always return timezone-aware UTC
+    except:
+        pass
     
-    def __init__(self, config: UnifiedConfig, database: UnifiedDatabaseManager, region_filter: EnhancedRegionFilter):
-        self.config = config
-        self.database = database
-        self.region_filter = region_filter
-        
-    def _extract_meta_date(self, soup: BeautifulSoup) -> Optional[str]:
-        """Best-effort: look for common meta date tags within a document."""
-        meta_props = [
-            ("meta", {"property": "article:published_time"}),
-            ("meta", {"property": "og:published_time"}),
-            ("meta", {"name": "date"}),
-            ("meta", {"name": "pubdate"}),
-            ("meta", {"itemprop": "datePublished"}),
-        ]
-        for tag, attrs in meta_props:
-            el = soup.find(tag, attrs=attrs)
-            if el and el.get("content"):
-                return el["content"].strip()
-        return None
-
-    def discover_feeds_from_html(self, html_text: str, base_url: str) -> List[str]:
-        feeds = set()
-        soup = BeautifulSoup(html_text, "html.parser")
-        for link in soup.find_all("link"):
-            rel = [r.lower() for r in (link.get("rel") or [])]
-            typ = (link.get("type") or "").lower()
-            href = link.get("href")
-            if href and "alternate" in rel and any(t in typ for t in ["rss", "atom", "xml"]):
-                feeds.add(urljoin(base_url, href))
-        for a in soup.find_all("a", href=True):
-            href = a["href"].strip().lower()
-            if any(tok in href for tok in ["rss", "atom", "feed"]) and href.endswith(("xml", "rss")):
-                feeds.add(urljoin(base_url, a["href"]))
-        return list(feeds)
-
-    def collect_from_feed(self, feed_url: str, max_items: int = 50) -> List[Dict]:
-        out: List[Dict] = []
-        try:
-            fp = feedparser.parse(feed_url)
-            for e in fp.entries[:max_items]:
-                title = (e.get("title") or "").strip()
-                link = canonicalize_url((e.get("link") or "").strip())
-                dt = None
-                if hasattr(e, "published_parsed") and e.published_parsed:
-                    dt = datetime.datetime(*e.published_parsed[:6], tzinfo=datetime.timezone.utc)
-                elif hasattr(e, "updated_parsed") and e.updated_parsed:
-                    dt = datetime.datetime(*e.updated_parsed[:6], tzinfo=datetime.timezone.utc)
-                else:
-                    dt = parse_date(e.get("published") or e.get("updated") or "")
-                out.append({"title": title, "url": link, "date": dt, "source": feed_url, "source_type": "feed"})
-        except Exception as ex:
-            logger.debug(f"Feed parse failed {feed_url}: {ex}")
-        return out
-
-    def collect_from_html_page(self, page_url: str, max_items: int = 50) -> List[Dict]:
-        items: List[Dict] = []
-        try:
-            resp = http_get(page_url)
-            soup = BeautifulSoup(resp.text, "html.parser")
-
-            newsy_class_hints = ("news", "press", "release", "media", "article", "stories", "updates")
-            candidates = list(soup.find_all("article"))
-            candidates += [
-                d for d in soup.find_all(["div", "li", "section"])
-                if any(h in " ".join((d.get("class") or []) + [d.get("id") or ""]).lower() for h in newsy_class_hints)
-            ]
-
-            seen = set()
-            for node in candidates:
-                a = node.find("a", href=True)
-                if not a:
-                    continue
-                href = canonicalize_url(urljoin(page_url, a["href"].strip()))
-                if href in seen or not is_safe_url(href):
-                    continue
-                seen.add(href)
-
-                title = (a.get_text(strip=True) or "").strip()
-                if not title or len(title) < 5:
-                    continue
-
-                # Try a nearby <time>, or meta tags as fallback, or a plain-text date pattern.
-                dt = None
-                t = node.find("time")
-                date_text = ""
-                if t and (t.get("datetime") or t.get_text(strip=True)):
-                    date_text = (t.get("datetime") or t.get_text(strip=True)).strip()
-                    dt = parse_date(date_text)
-                if not dt:
-                    meta_date = self._extract_meta_date(soup)
-                    dt = parse_date(meta_date)
-                if not dt:
-                    txt = node.get_text(" ", strip=True)[:600]
-                    m = re.search(r"([A-Z][a-z]{2,9}\s+\d{1,2},\s+\d{4})|\b(\d{4}-\d{2}-\d{2})\b", txt)
-                    if m:
-                        dt = parse_date(m.group(0))
-
-                items.append({"title": title, "url": href, "date": dt, "source": page_url, "source_type": "page"})
-                if len(items) >= max_items:
-                    break
-
-        except Exception as e:
-            logger.debug(f"HTML collect failed for {page_url}: {e}")
-        return items
-
-    def collect_company_latest(self, company: Company, max_items: int = 50) -> List[Dict]:
-        """FIXED: Collect with 3-day filter for company articles"""
-        results: List[Dict] = []
-        
-        # FIXED: Add 3-day cutoff with UTC timezone to avoid comparison issues
-        three_days_ago = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=3)
-
-        # 1) known feeds
-        for feed in company.feeds[:3]:
-            feed_results = self.collect_from_feed(feed, max_items=max_items)
-            # FIXED: Filter by 3-day cutoff with timezone-aware comparison
-            filtered_results = []
-            for r in feed_results:
-                r_date = r.get("date")
-                if r_date:
-                    # Ensure r_date is timezone-aware for comparison
-                    if r_date.tzinfo is None:
-                        r_date = r_date.replace(tzinfo=datetime.timezone.utc)
-                    if r_date >= three_days_ago:
-                        filtered_results.append(r)
-                else:
-                    # If no date, include it (it's recent enough)
-                    filtered_results.append(r)
-            results.extend(filtered_results)
-            if len(results) >= max_items:
-                break
-
-        # 2) autodiscover feeds from pages
-        if len(results) < max_items:
-            for page in company.pages:
-                try:
-                    resp = http_get(page)
-                except Exception:
-                    continue
-                feeds = self.discover_feeds_from_html(resp.text, page)
-                for f in feeds[:3]:
-                    feed_results = self.collect_from_feed(f, max_items=max_items - len(results))
-                    # FIXED: Filter by 3-day cutoff with timezone-aware comparison
-                    filtered_results = []
-                    for r in feed_results:
-                        r_date = r.get("date")
-                        if r_date:
-                            # Ensure r_date is timezone-aware for comparison
-                            if r_date.tzinfo is None:
-                                r_date = r_date.replace(tzinfo=datetime.timezone.utc)
-                            if r_date >= three_days_ago:
-                                filtered_results.append(r)
-                        else:
-                            # If no date, include it (it's recent enough)
-                            filtered_results.append(r)
-                    results.extend(filtered_results)
-                    if len(results) >= max_items:
-                        break
-                if len(results) >= max_items:
-                    break
-
-        # 3) fallback to page scrape
-        if len(results) < max_items:
-            for page in company.pages:
-                page_results = self.collect_from_html_page(page, max_items=max_items - len(results))
-                # FIXED: Filter by 3-day cutoff with timezone-aware comparison
-                filtered_results = []
-                for r in page_results:
-                    r_date = r.get("date")
-                    if r_date:
-                        # Ensure r_date is timezone-aware for comparison
-                        if r_date.tzinfo is None:
-                            r_date = r_date.replace(tzinfo=datetime.timezone.utc)
-                        if r_date >= three_days_ago:
-                            filtered_results.append(r)
-                    else:
-                        # If no date, include it (it's recent enough)
-                        filtered_results.append(r)
-                results.extend(filtered_results)
-                if len(results) >= max_items:
-                    break
-
-        # dedupe by canonical URL
-        seen = set()
-        uniq = []
-        for r in results:
-            u = r.get("url")
-            if not u or u in seen:
-                continue
-            seen.add(u)
-            uniq.append(r)
-        return uniq
-
-    async def monitor_all_companies(self) -> List[Dict[str, Any]]:
-        """Monitor all companies and return collected articles"""
-        logger.info("Starting company monitoring...")
-        all_company_articles = []
-        
-        for company in COMPANIES:
-            logger.info(f"Monitoring {company.name}...")
-            
+    patterns = [
+        r'(\d{4}-\d{2}-\d{2})',
+        r'([A-Z][a-z]{2,8}\s+\d{1,2},?\s+\d{4})',
+        r'(\d{1,2}/\d{1,2}/\d{4})',
+    ]
+    
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
             try:
-                raw_items = self.collect_company_latest(company, max_items=self.config.company_max_items_per_source)
-                
-                for item in raw_items:
-                    try:
-                        # Apply region filtering
-                        if self.region_filter.should_exclude_by_title(item.get("title", "")):
-                            continue
-                            
-                        canonical_url = canonicalize_url(item.get("url", ""))
-                        content_hash = hashlib.md5(f"{item.get('title', '')}{canonical_url}".encode('utf-8')).hexdigest()
-                        
-                        article_data = {
-                            'url': item.get("url", ""),
-                            'canonical_url': canonical_url,
-                            'title': item.get("title", ""),
-                            'original_title': item.get("title", ""),
-                            'content': "",  # Company monitoring doesn't extract full content
-                            'summary': "",
-                            'source_type': 'company',
-                            'domain': get_domain(item.get("url", "")),
-                            'category': company.key,
-                            'company_key': company.key,
-                            'trend_category': None,
-                            'relevance_score': 1.0,  # Company articles are always relevant
-                            'semantic_relevance_score': 0.0,
-                            'quality_score': 1.0,
-                            'region_confidence': 1.0,  # Company articles are pre-filtered
-                            'word_count': 0,
-                            'content_hash': content_hash,
-                            'published_date': item.get("date"),
-                            'search_keywords': []
-                        }
-                        
-                        # Save to database
-                        if self.database.save_article(article_data):
-                            all_company_articles.append(article_data)
-                            
-                    except Exception as e:
-                        logger.error(f"Error processing company article: {e}")
-                        continue
-                
-                logger.info(f"Collected {len([a for a in all_company_articles if a['company_key'] == company.key])} articles from {company.name}")
-                
-                # Polite delay between companies
-                time.sleep(1.0)  # Slightly increased delay
-                
-            except Exception as e:
-                logger.error(f"Error monitoring {company.name}: {e}")
+                dt = dateparser.parse(match.group(1))
+                if dt:
+                    return ensure_utc(dt)  # FIXED: Always return timezone-aware UTC
+            except:
                 continue
-        
-        logger.info(f"Company monitoring completed. Total articles: {len(all_company_articles)}")
-        return all_company_articles
-
-    def diagnose_company_links(self) -> list[dict]:
-        """FIXED: Enhanced link diagnosis with better error handling"""
-        report = []
-        for company in COMPANIES:
-            for page in company.pages:
-                entry = {'company': company.name, 'url': page, 'head': None, 'get': None, 'error': None}
-                try:
-                    try:
-                        entry['head'] = http_head(page, timeout=(8, 15), max_retries=2)
-                    except Exception as e:
-                        entry['head'] = f"HEAD_ERR: {type(e).__name__}: {str(e)[:100]}"
-                    try:
-                        r = http_get(page, timeout=20, max_retries=2)
-                        entry['get'] = r.status_code
-                    except Exception as e:
-                        entry['get'] = f"GET_ERR: {type(e).__name__}: {str(e)[:100]}"
-                except Exception as e:
-                    entry['error'] = f"{type(e).__name__}: {str(e)[:100]}"
-                report.append(entry)
-        return report
+    
+    return None
 
 # --------------------------------------------------------------------------------------
-# Keyword Expansion System (Enhanced from trends system)
+# Data Structures
+# --------------------------------------------------------------------------------------
+
+@dataclass
+class ContentSource:
+    """Unified content source for both companies and trends"""
+    url: str
+    title: str
+    content: str = ""
+    summary: str = ""
+    source_type: str = ""  # 'company' or 'trend'
+    category: str = ""  # company key or trend key
+    domain: str = ""
+    published_date: Optional[datetime.datetime] = None
+    relevance_score: float = 0.0
+    semantic_relevance_score: float = 0.0
+    quality_score: float = 0.0
+    region_confidence: float = 1.0
+    word_count: int = 0
+    content_hash: str = ""
+    search_keywords: List[str] = field(default_factory=list)
+    original_title: str = ""
+    enhanced_title: str = ""
+    
+    def __post_init__(self):
+        if not self.url or not self.title:
+            raise ValueError("URL and title are required")
+        if not self.original_title:
+            self.original_title = str(self.title).strip()
+        if not self.content_hash:
+            content = f"{self.title}{self.content}"
+            self.content_hash = hashlib.md5(content.encode('utf-8')).hexdigest()
+        if not self.word_count and self.content:
+            self.word_count = len(self.content.split())
+        if not self.domain and self.url:
+            self.domain = urlparse(self.url).netloc
+        # FIXED: Ensure published_date is timezone-aware
+        if self.published_date:
+            self.published_date = ensure_utc(self.published_date)
+
+@dataclass
+class Company:
+    """Company configuration"""
+    key: str
+    name: str
+    pages: List[str]
+    feeds: List[str]
+    scrape_enabled: bool = True
+
+@dataclass
+class TrendConfig:
+    """Trend configuration"""
+    name: str
+    keywords: List[str]
+    rss_feeds: List[str] = field(default_factory=list)
+    min_relevance_score: float = 0.3
+    email_relevance_score: float = 0.45
+    max_articles: int = 6
+    google_search_enabled: bool = True
+    priority: str = "medium"
+    description: str = ""
+
+# --------------------------------------------------------------------------------------
+# Company and Trend Definitions
+# --------------------------------------------------------------------------------------
+
+COMPANIES: List[Company] = [
+    Company("visa", "Visa",
+            pages=["https://usa.visa.com/about-visa/newsroom.html",
+                   "https://investor.visa.com/news/default.aspx"],
+            feeds=[]),
+    
+    Company("mastercard", "Mastercard", 
+            pages=["https://www.mastercard.com/us/en/news-and-trends/press.html",
+                   "https://investor.mastercard.com/investor-news/default.aspx"],
+            feeds=[]),
+    
+    Company("paypal", "PayPal",
+            pages=["https://newsroom.paypal-corp.com/",
+                   "https://investor.pypl.com/news-and-events/news/default.aspx"],
+            feeds=[]),
+    
+    Company("stripe", "Stripe",
+            pages=["https://stripe.com/newsroom",
+                   "https://stripe.com/blog"],
+            feeds=["https://stripe.com/blog/feed.rss"]),
+    
+    Company("affirm", "Affirm",
+            pages=["https://investors.affirm.com/news-releases",
+                   "https://investors.affirm.com/news-events/newsroom"],
+            feeds=[]),
+    
+    Company("toast", "Toast",
+            pages=["https://investors.toasttab.com/events-and-presentations/default.aspx",
+                   "https://investors.toasttab.com/news/default.aspx"],
+            feeds=[]),
+    
+    Company("adyen", "Adyen",
+            pages=["https://www.adyen.com/press-and-media"],
+            feeds=[]),
+    
+    Company("fiserv", "Fiserv",
+            pages=["https://newsroom.fiserv.com/",
+                   "https://investors.fiserv.com/newsroom"],
+            feeds=[]),
+    
+    Company("fis", "FIS",
+            pages=["https://www.fisglobal.com/en/about-us/media-room"],
+            feeds=[]),
+    
+    Company("gpn", "Global Payments",
+            pages=["https://investors.globalpayments.com/news-events/press-releases"],
+            feeds=[]),
+]
+
+TRENDS = {
+    "instant_payments": TrendConfig(
+        name="Instant Payments",
+        keywords=["instant payments", "real-time payments", "RTP", "FedNow", "faster payments"],
+        rss_feeds=["https://www.federalreserve.gov/feeds/press_all.xml"],
+    ),
+    "a2a_open_banking": TrendConfig(
+        name="A2A & Open Banking",
+        keywords=["open banking", "PSD2", "account to account", "A2A payments", "banking APIs"],
+        rss_feeds=["https://www.consumerfinance.gov/about-us/newsroom/rss/"],
+    ),
+    "stablecoins": TrendConfig(
+        name="Stablecoins & CBDC",
+        keywords=["stablecoin", "CBDC", "central bank digital currency", "digital dollar"],
+        rss_feeds=["https://www.ecb.europa.eu/rss/fie.html"],
+    ),
+    "softpos_tap_to_pay": TrendConfig(
+        name="SoftPOS & Tap to Pay",
+        keywords=["SoftPOS", "tap to pay", "contactless payments", "mobile POS", "NFC payments"],
+        rss_feeds=[],
+    ),
+    "cross_border": TrendConfig(
+        name="Cross-Border Payments",
+        keywords=["cross border payments", "international payments", "remittance", "global payments"],
+        rss_feeds=[],
+    ),
+    "bnpl": TrendConfig(
+        name="Buy Now, Pay Later",
+        keywords=["buy now pay later", "BNPL", "installment payments", "Klarna", "Afterpay"],
+        rss_feeds=[],
+    ),
+    "payment_orchestration": TrendConfig(
+        name="Payment Orchestration",
+        keywords=["payment orchestration", "smart routing", "payment optimization"],
+        rss_feeds=[],
+    ),
+    "fraud_ai": TrendConfig(
+        name="Fraud Prevention & AI",
+        keywords=["fraud prevention", "AI payments", "machine learning payments", "AML"],
+        rss_feeds=[],
+    ),
+    "pci_dss": TrendConfig(
+        name="PCI DSS & Security",
+        keywords=["PCI DSS", "payment security", "data security standard", "compliance"],
+        rss_feeds=[],
+    ),
+    "wallet_nfc": TrendConfig(
+        name="Digital Wallets & NFC",
+        keywords=["digital wallet", "mobile wallet", "NFC payments", "Apple Pay", "Google Pay"],
+        rss_feeds=[],
+    ),
+}
+
+# --------------------------------------------------------------------------------------
+# Keyword Expansion System
 # --------------------------------------------------------------------------------------
 
 class KeywordExpansionSystem:
@@ -1647,764 +1375,11 @@ class KeywordExpansionSystem:
         return unique_expanded
 
 # --------------------------------------------------------------------------------------
-# Enhanced RSS Feed Validator (From trends system)
-# --------------------------------------------------------------------------------------
-
-class EnhancedRSSFeedValidator:
-    """RSS feed validation with better error handling"""
-    
-    def __init__(self, region_filter: EnhancedRegionFilter):
-        self.region_filter = region_filter
-    
-    @with_retry(max_retries=3, exceptions=(aiohttp.ClientError,))
-    async def validate_rss_feed(self, rss_url: str) -> bool:
-        try:
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept': 'application/rss+xml, application/xml, text/xml, application/atom+xml, */*',
-                'Accept-Encoding': 'gzip, deflate',
-                'Connection': 'keep-alive'
-            }
-            async with aiohttp.ClientSession() as session:
-                try:
-                    async with session.get(
-                        rss_url,
-                        headers=headers,
-                        timeout=aiohttp.ClientTimeout(total=30),
-                        ssl=True
-                    ) as response:
-                        if 200 <= response.status < 400:
-                            text = await response.text()
-                            return self._is_valid_feed_content(text)
-                except:
-                    try:
-                        async with session.get(
-                            rss_url,
-                            headers=headers,
-                            timeout=aiohttp.ClientTimeout(total=30),
-                            ssl=False
-                        ) as response:
-                            if 200 <= response.status < 400:
-                                text = await response.text()
-                                return self._is_valid_feed_content(text)
-                    except:
-                        pass
-            return False
-        except Exception as e:
-            logger.debug(f"RSS validation failed for {rss_url}: {e}")
-            return False
-    
-    @staticmethod
-    def _is_valid_feed_content(content: str) -> bool:
-        if not content or len(content) < 50:
-            return False
-        content_lower = content.lower()
-        feed_indicators = [
-            '<rss', '<feed', '<atom', '<?xml',
-            'application/rss+xml', 'application/atom+xml',
-            '<channel>', '<entry>', '<item>'
-        ]
-        return any(indicator in content_lower for indicator in feed_indicators)
-
-    async def extract_from_rss_preserve_titles(self, rss_url: str, source_name: str) -> List[Dict[str, Any]]:
-        sources = []
-        try:
-            headers = {
-                'User-Agent': 'Mozilla/5.0 (compatible; UnifiedFinTechIntelligence/3.0; +https://example.com/bot)',
-                'Accept': 'application/rss+xml, application/xml, text/xml, application/atom+xml, */*',
-                'Accept-Encoding': 'gzip, deflate',
-                'Connection': 'keep-alive'
-            }
-            async with aiohttp.ClientSession() as session:
-                rss_content = None
-                approaches = [
-                    {"ssl": True, "timeout": 45},
-                    {"ssl": False, "timeout": 45},
-                    {"ssl": False, "timeout": 60}
-                ]
-                for approach in approaches:
-                    try:
-                        async with session.get(
-                            rss_url,
-                            headers=headers,
-                            timeout=aiohttp.ClientTimeout(total=approach["timeout"]),
-                            ssl=approach["ssl"],
-                            allow_redirects=True
-                        ) as response:
-                            if response.status == 200:
-                                rss_content = await response.text()
-                                break
-                            elif response.status in [301, 302, 307, 308]:
-                                redirect_url = response.headers.get('Location')
-                                if redirect_url:
-                                    logger.info(f"RSS feed redirected: {rss_url} -> {redirect_url}")
-                                    async with session.get(
-                                        redirect_url,
-                                        headers=headers,
-                                        timeout=aiohttp.ClientTimeout(total=approach["timeout"]),
-                                        ssl=approach["ssl"]
-                                    ) as redirect_response:
-                                        if redirect_response.status == 200:
-                                            rss_content = await redirect_response.text()
-                                            break
-                    except Exception as e:
-                        logger.debug(f"RSS approach failed for {rss_url}: {e}")
-                        continue
-                if not rss_content:
-                    logger.warning(f"Failed to fetch RSS content from: {rss_url}")
-                    return sources
-                if not self._is_valid_feed_content(rss_content):
-                    logger.warning(f"RSS content validation failed: {rss_url}")
-                    return sources
-                feed = feedparser.parse(rss_content)
-                if not getattr(feed, 'entries', None):
-                    logger.warning(f"No entries found in RSS feed: {rss_url}")
-                    return sources
-                if hasattr(feed, 'bozo') and feed.bozo:
-                    logger.debug(f"RSS feed has parsing issues but proceeding: {rss_url}")
-                cutoff_date = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=14)
-                for entry in feed.entries[:30]:
-                    try:
-                        source = await self._process_rss_entry(entry, source_name, cutoff_date)
-                        if source:
-                            sources.append(source)
-                    except Exception as e:
-                        logger.debug(f"Error processing RSS entry from {rss_url}: {e}")
-                        continue
-                logger.info(f"RSS extracted {len(sources)} articles from {source_name}")
-        except Exception as e:
-            logger.error(f"RSS extraction failed for {rss_url}: {e}")
-        return sources
-
-    async def _process_rss_entry(self, entry, source_name: str, cutoff_date: datetime.datetime) -> Optional[Dict[str, Any]]:
-        url = getattr(entry, 'link', '').strip()
-        full_title_raw = getattr(entry, 'title', '').strip()
-        if not url or not full_title_raw or len(full_title_raw) < 5:
-            return None
-        if self.region_filter.should_exclude_by_title(full_title_raw):
-            return None
-        domain = urlparse(url).netloc
-        if not self.region_filter.is_us_eu_domain(url):
-            return None
-        content = ""
-        if hasattr(entry, 'summary'):
-            content = BeautifulSoup(entry.summary, 'html.parser').get_text(strip=True)
-        elif hasattr(entry, 'description'):
-            content = BeautifulSoup(entry.description, 'html.parser').get_text(strip=True)
-        elif hasattr(entry, 'content'):
-            if isinstance(entry.content, list) and entry.content:
-                content = BeautifulSoup(entry.content[0].value, 'html.parser').get_text(strip=True)
-        region_confidence = self.region_filter.assess_content_relevance(content)
-        if region_confidence < 0.3:
-            return None
-        full_title = self._clean_title_comprehensive(full_title_raw)
-        pub_date = None
-        if hasattr(entry, 'published_parsed') and entry.published_parsed:
-            try:
-                pub_date = datetime.datetime(*entry.published_parsed[:6], tzinfo=datetime.timezone.utc)
-            except:
-                pass
-        elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
-            try:
-                pub_date = datetime.datetime(*entry.updated_parsed[:6], tzinfo=datetime.timezone.utc)
-            except:
-                pass
-        if pub_date and pub_date < cutoff_date:
-            return None
-        
-        canonical_url = canonicalize_url(url)
-        content_hash = hashlib.md5(f"{full_title}{canonical_url}".encode('utf-8')).hexdigest()
-        
-        return {
-            'url': url,
-            'canonical_url': canonical_url,
-            'title': full_title,
-            'original_title': full_title_raw,
-            'content': content,
-            'summary': '',
-            'source_type': 'trend_rss',
-            'domain': domain,
-            'category': source_name.replace('_rss', ''),
-            'company_key': None,
-            'trend_category': source_name.replace('_rss', ''),
-            'relevance_score': 0.0,
-            'semantic_relevance_score': 0.0,
-            'quality_score': 0.0,
-            'region_confidence': region_confidence,
-            'word_count': len(content.split()) if content else 0,
-            'content_hash': content_hash,
-            'published_date': pub_date,
-            'search_keywords': []
-        }
-    
-    @staticmethod
-    def _clean_title_comprehensive(title: str) -> str:
-        if not title:
-            return ""
-        cleaned = re.sub(r'\s+', ' ', title.strip())
-        cleaned = re.sub(r'&[a-zA-Z0-9#]+;', '', cleaned)
-        cleaned = re.sub(r'<[^>]+>', '', cleaned)
-        patterns = [
-            r'\s*-\s*[^-]*(?:\.com|\.org|\.net|News|Times|Post|Journal).*',
-            r'\s*\|\s*[^|]*(?:\.com|\.org|\.net|News|Times|Post|Journal).*',
-            r'\s*::\s*.*'
-        ]
-        for pattern in patterns:
-            cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
-        cleaned = re.sub(r'^[^\w\s]+|[^\w\s]+$', '', cleaned).strip()
-        if len(cleaned) < len(title) * 0.5:
-            cleaned = title.strip()
-        return cleaned
-
-# --------------------------------------------------------------------------------------
-# Trends System Components
-# --------------------------------------------------------------------------------------
-
-@dataclass
-class TrendConfig:
-    """Enhanced trend configuration"""
-    name: str
-    keywords: List[str]
-    rss_feeds: List[str] = field(default_factory=list)
-    min_relevance_score: float = 0.3
-    email_relevance_score: float = 0.45
-    max_articles: int = 8
-    google_search_enabled: bool = True
-    priority: str = "medium"
-    description: str = ""
-    include_social: bool = True
-
-class GoogleSearchIntegration:
-    """Enhanced Google Search API integration"""
-    
-    def __init__(self, config: UnifiedConfig, region_filter: EnhancedRegionFilter, keyword_expander: KeywordExpansionSystem):
-        self.config = config
-        self.region_filter = region_filter
-        self.keyword_expander = keyword_expander
-        self.enabled = bool(config.google_api_key and config.google_search_engine_id)
-        self.queries_today = 0
-        
-        if not self.enabled:
-            raise ConfigurationError("Google Search API not configured")
-        
-        logger.info(f"Google Search API enabled with daily limit: {config.google_daily_limit}")
-    
-    async def search_trend(self, trend_name: str, base_keywords: List[str], max_results: int = 20) -> List[Dict[str, Any]]:
-        """Enhanced trend search with expanded keywords"""
-        if self.queries_today >= self.config.google_daily_limit:
-            logger.warning(f"Google Search daily quota exceeded ({self.config.google_daily_limit})")
-            return []
-        
-        expanded_keywords = self.keyword_expander.expand_keywords(trend_name, base_keywords)
-        sources = []
-        
-        try:
-            search_strategies = []
-            for keyword in expanded_keywords[:4]:
-                search_strategies.append(keyword)
-            if len(expanded_keywords) >= 2:
-                search_strategies.append(f"{expanded_keywords[0]} {expanded_keywords[1]}")
-            
-            logger.info(f"Google Search for {trend_name} with {len(search_strategies)} strategies")
-            async with aiohttp.ClientSession() as session:
-                for search_query in search_strategies[:3]:
-                    if self.queries_today >= self.config.google_daily_limit:
-                        break
-                    try:
-                        params = {
-                            'key': self.config.google_api_key,
-                            'cx': self.config.google_search_engine_id,
-                            'q': search_query,
-                            'num': 10,
-                            'dateRestrict': 'w1',
-                            'sort': 'date',
-                            'lr': 'lang_en',
-                            'safe': 'medium'
-                        }
-                        async with session.get(
-                            'https://www.googleapis.com/customsearch/v1',
-                            params=params,
-                            timeout=aiohttp.ClientTimeout(total=30)
-                        ) as response:
-                            if response.status == 200:
-                                data = await response.json()
-                                items = data.get('items', [])
-                                for item in items:
-                                    try:
-                                        source = await self._process_search_result(
-                                            item, trend_name, expanded_keywords
-                                        )
-                                        if source:
-                                            sources.append(source)
-                                    except Exception as e:
-                                        logger.warning(f"Error processing Google result: {e}")
-                                self.queries_today += 1
-                            elif response.status == 429:
-                                logger.warning("Google Search API rate limit exceeded")
-                                self.queries_today = self.config.google_daily_limit
-                                break
-                            else:
-                                raise APIError(f"Google Search API error {response.status}")
-                    except aiohttp.ClientError as e:
-                        logger.error(f"Google Search HTTP error for {trend_name}: {e}")
-                        continue
-                await asyncio.sleep(0.5)
-        except Exception as e:
-            logger.error(f"Google Search failed for {trend_name}: {e}")
-        
-        unique_sources = self._deduplicate_sources(sources)
-        logger.info(f"Google Search found {len(unique_sources)} unique articles for {trend_name}")
-        return unique_sources
-    
-    async def _process_search_result(self, item: Dict, trend_name: str, keywords: List[str]) -> Optional[Dict[str, Any]]:
-        url = item.get('link', '').strip()
-        full_title = item.get('title', '').strip()
-        snippet = item.get('snippet', '').strip()
-        if not url or not full_title or len(full_title) < 5:
-            return None
-        if self.region_filter.should_exclude_by_title(full_title):
-            return None
-        if not self.region_filter.is_us_eu_domain(url):
-            return None
-        region_confidence = self.region_filter.assess_content_relevance(snippet)
-        if region_confidence < 0.3:
-            return None
-        cleaned_title = self._clean_title_preserve_all_words(full_title)
-        published_date = self._extract_published_date(item)
-        domain = urlparse(url).netloc
-        canonical_url = canonicalize_url(url)
-        content_hash = hashlib.md5(f"{cleaned_title}{canonical_url}".encode('utf-8')).hexdigest()
-        
-        return {
-            'url': url,
-            'canonical_url': canonical_url,
-            'title': cleaned_title,
-            'original_title': full_title,
-            'content': snippet,
-            'summary': '',
-            'source_type': 'trend_google',
-            'domain': domain,
-            'category': trend_name,
-            'company_key': None,
-            'trend_category': trend_name,
-            'relevance_score': 0.0,  # Will be calculated later
-            'semantic_relevance_score': 0.0,
-            'quality_score': 0.0,
-            'region_confidence': region_confidence,
-            'word_count': len(snippet.split()) if snippet else 0,
-            'content_hash': content_hash,
-            'published_date': published_date,
-            'search_keywords': keywords[:5]
-        }
-    
-    def _clean_title_preserve_all_words(self, title: str) -> str:
-        if not title:
-            return ""
-        cleaned = re.sub(r'\s+', ' ', title.strip())
-        cleaned = re.sub(r'&[a-zA-Z0-9]+;', '', cleaned)
-        patterns = [
-            r'\s*-\s*[^-]*(?:\.com|\.org|\.net|news|times|post|journal).*',
-            r'\s*\|\s*[^|]*(?:\.com|\.org|\.net|news|times|post|journal).*',
-            r'\s*::\s*.*'
-        ]
-        for pattern in patterns:
-            cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
-        cleaned = re.sub(r'^[^\w\s]+|[^\w\s]+$', '', cleaned).strip()
-        if len(cleaned) < len(title) * 0.6:
-            cleaned = title.strip()
-        return cleaned
-    
-    def _extract_published_date(self, item: Dict) -> Optional[datetime.datetime]:
-        if 'pagemap' in item and 'metatags' in item['pagemap']:
-            for meta in item['pagemap']['metatags']:
-                date_str = meta.get('article:published_time') or meta.get('datePublished')
-                if date_str:
-                    try:
-                        if 'T' in date_str:
-                            return datetime.datetime.fromisoformat(
-                                date_str.replace('Z', '+00:00')).replace(tzinfo=None)
-                    except:
-                        pass
-        return None
-    
-    def _deduplicate_sources(self, sources: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        unique_sources = []
-        seen_urls = set()
-        seen_hashes = set()
-        for source in sources:
-            if (source['url'] not in seen_urls and 
-                source['content_hash'] not in seen_hashes):
-                unique_sources.append(source)
-                seen_urls.add(source['url'])
-                seen_hashes.add(source['content_hash'])
-        return unique_sources
-
-class TrendsMonitoringSystem:
-    """Enhanced trends monitoring system"""
-    
-    def __init__(self, config: UnifiedConfig, database: UnifiedDatabaseManager, 
-                 region_filter: EnhancedRegionFilter, llm_integration: EnhancedLLMIntegration):
-        self.config = config
-        self.database = database
-        self.region_filter = region_filter
-        self.llm_integration = llm_integration
-        self.keyword_expander = KeywordExpansionSystem(config)
-        
-        if config.trends_enabled:
-            self.google_search = GoogleSearchIntegration(config, region_filter, self.keyword_expander)
-            self.rss_validator = EnhancedRSSFeedValidator(region_filter)
-        else:
-            self.google_search = None
-            self.rss_validator = None
-            
-        # Load trends configuration
-        self.trends = self._load_trends()
-        
-    def _load_trends(self) -> Dict[str, TrendConfig]:
-        """Load trend configurations"""
-        try:
-            cfg_path = self.config.trend_config_json
-            if cfg_path and os.path.exists(cfg_path):
-                with open(cfg_path, "r", encoding="utf-8") as f:
-                    raw = json.load(f)
-                trends: Dict[str, TrendConfig] = {}
-                for key, val in raw.items():
-                    if key.startswith("_"):  # Skip metadata
-                        continue
-                    trends[key] = TrendConfig(
-                        name=val.get("name", key.replace("_", " ").title()),
-                        keywords=val.get("keywords", []),
-                        rss_feeds=list(dict.fromkeys(val.get("rss_feeds", []))),
-                        min_relevance_score=val.get("min_relevance_score", 0.3),
-                        email_relevance_score=val.get("email_relevance_score", self.config.relevance_threshold),
-                        max_articles=val.get("max_articles", 8),
-                        google_search_enabled=val.get("google_search_enabled", True),
-                        priority=val.get("priority", "medium"),
-                        description=val.get("description", ""),
-                        include_social=val.get("include_social", True),
-                    )
-                logger.info(f"Loaded {len(trends)} trends from JSON config: {cfg_path}")
-                return trends
-        except Exception as e:
-            logger.warning(f"Failed to load trend JSON config; using enhanced defaults: {e}")
-        
-        return self._get_default_trends()
-    
-    def _get_default_trends(self) -> Dict[str, TrendConfig]:
-        """Get default trend configurations"""
-        return {
-            "instant_payments": TrendConfig(
-                name="Instant Payments",
-                keywords=[
-                    "instant payments", "real-time payments", "RTP", "FedNow", "faster payments",
-                    "immediate settlement", "real-time settlement", "instant transfers"
-                ],
-                rss_feeds=[
-                    "https://www.federalreserve.gov/feeds/press_all.xml",
-                    "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-                ],
-                min_relevance_score=0.25,
-                email_relevance_score=0.4
-            ),
-            "a2a_open_banking": TrendConfig(
-                name="A2A & Open Banking",
-                keywords=[
-                    "open banking", "PSD2", "PSD3", "account to account", "A2A payments",
-                    "bank-to-bank", "direct bank transfer", "banking APIs", "payment initiation"
-                ],
-                rss_feeds=[
-                    "https://www.consumerfinance.gov/about-us/newsroom/rss/",
-                    "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-                ],
-                min_relevance_score=0.25,
-                email_relevance_score=0.4
-            ),
-            "stablecoins": TrendConfig(
-                name="Stablecoins & CBDC",
-                keywords=[
-                    "stablecoin", "CBDC", "central bank digital currency", "digital dollar", "digital euro",
-                    "cryptocurrency payments", "blockchain payments", "digital currency"
-                ],
-                rss_feeds=[
-                    "https://www.ecb.europa.eu/rss/fie.html",
-                    "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-                ],
-                min_relevance_score=0.25,
-                email_relevance_score=0.4
-            ),
-            "softpos_tap_to_pay": TrendConfig(
-                name="SoftPOS & Tap to Pay",
-                keywords=[
-                    "SoftPOS", "tap to pay", "contactless payments", "mobile POS", "mPOS",
-                    "smartphone payments", "NFC payments", "mobile terminals"
-                ],
-                rss_feeds=[
-                    "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-                    "https://www.nfcw.com/feed/",
-                ],
-                min_relevance_score=0.25,
-                email_relevance_score=0.4
-            ),
-            
-            "cross_border": TrendConfig(
-                name="Cross-Border Payments",
-                keywords=[
-                    "cross border payments", "international payments", "remittance", "FX", "foreign exchange",
-                    "global payments", "overseas payments", "correspondent banking"
-                ],
-                rss_feeds=[
-                    "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-                ],
-                min_relevance_score=0.25,
-                email_relevance_score=0.4
-            ),
-            "bnpl": TrendConfig(
-                name="Buy Now, Pay Later",
-                keywords=[
-                    "buy now pay later", "BNPL", "installment payments", "Klarna", "Afterpay",
-                    "deferred payments", "point of sale financing", "split payments"
-                ],
-                rss_feeds=[
-                    "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-                ],
-                min_relevance_score=0.25,
-                email_relevance_score=0.4
-            ),
-            "payment_orchestration": TrendConfig(
-                name="Payment Orchestration",
-                keywords=[
-                    "payment orchestration", "smart routing", "payment optimization", "payment routing",
-                    "payment intelligence", "transaction routing", "payment management"
-                ],
-                rss_feeds=[
-                    "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-                ],
-                min_relevance_score=0.25,
-                email_relevance_score=0.4
-            ),
-            "fraud_ai": TrendConfig(
-                name="Fraud Prevention & AI",
-                keywords=[
-                    "fraud prevention", "AI payments", "machine learning payments", "AML", "anti-money laundering",
-                    "fraud detection", "risk management", "transaction monitoring", "behavioral analytics"
-                ],
-                rss_feeds=[
-                    "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-                ],
-                min_relevance_score=0.25,
-                email_relevance_score=0.4
-            ),
-            "pci_dss": TrendConfig(
-                name="PCI DSS & Security",
-                keywords=[
-                    "PCI DSS", "payment security", "data security standard", "compliance", "cybersecurity",
-                    "payment data protection", "security standards", "financial security"
-                ],
-                rss_feeds=[
-                    "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-                ],
-                min_relevance_score=0.25,
-                email_relevance_score=0.4
-            ),
-            "wallet_nfc": TrendConfig(
-                name="Digital Wallets & NFC",
-                keywords=[
-                    "digital wallet", "mobile wallet", "NFC payments", "Apple Pay", "Google Pay", "Samsung Pay",
-                    "mobile payments", "contactless payments", "electronic wallet"
-                ],
-                rss_feeds=[
-                    "https://www.finextra.com/rss/headlinefeeds.aspx?ff=1",
-                    "https://www.nfcw.com/feed/",
-                ],
-                min_relevance_score=0.25,
-                email_relevance_score=0.4
-            )
-        }
-    
-    def calculate_relevance_score(self, content: str, title: str, keywords: List[str]) -> float:
-        """Enhanced relevance scoring with semantic matching"""
-        try:
-            full_text = f"{title} {title} {content}".lower()
-            if not full_text.strip():
-                return 0.0
-            exact_matches = 0
-            partial_matches = 0
-            semantic_matches = 0
-            for keyword in keywords:
-                keyword_lower = keyword.lower()
-                if keyword_lower in full_text:
-                    exact_matches += 1
-                else:
-                    keyword_words = keyword_lower.split()
-                    if len(keyword_words) > 1:
-                        word_matches = sum(1 for word in keyword_words if word in full_text)
-                        if word_matches >= len(keyword_words) * 0.4:
-                            partial_matches += 1
-                    semantic_terms = self._get_semantic_terms(keyword_lower)
-                    if any(term in full_text for term in semantic_terms):
-                        semantic_matches += 1
-            if exact_matches == 0 and partial_matches == 0 and semantic_matches == 0:
-                return 0.0
-            total_keywords = max(len(keywords), 1)
-            exact_score = (exact_matches / total_keywords)
-            partial_score = (partial_matches / total_keywords) * 0.6
-            semantic_score = (semantic_matches / total_keywords) * 0.3
-            base_score = exact_score + partial_score + semantic_score
-            title_bonus = self._calculate_title_bonus(title.lower(), keywords)
-            quality_bonus = self._calculate_quality_bonus(full_text)
-            recency_bonus = 0.05
-            final_score = min(base_score + title_bonus + quality_bonus + recency_bonus, 1.0)
-            return final_score
-        except Exception as e:
-            logger.error(f"Relevance scoring failed: {e}")
-            return 0.0
-    
-    def _get_semantic_terms(self, keyword: str) -> List[str]:
-        semantic_map = {
-            'instant payments': ['real-time', 'immediate', 'live payments', 'fast payments'],
-            'open banking': ['financial data sharing', 'bank APIs', 'PSD2', 'account information'],
-            'stablecoin': ['digital currency', 'cryptocurrency', 'CBDC', 'virtual currency'],
-            'contactless': ['NFC', 'tap to pay', 'proximity payments', 'mobile payments'],
-            'fraud prevention': ['risk management', 'security', 'anti-fraud', 'transaction monitoring'],
-            'cross border': ['international payments', 'remittance', 'global payments', 'FX'],
-            'BNPL': ['installments', 'deferred payment', 'buy now pay later', 'point of sale financing'],
-            'payment orchestration': ['smart routing', 'payment optimization', 'routing'],
-            'digital wallet': ['mobile wallet', 'e-wallet', 'electronic wallet', 'payment app'],
-            'PCI DSS': ['payment security', 'compliance', 'data protection', 'security standards']
-        }
-        return semantic_map.get(keyword, [])
-    
-    def _calculate_title_bonus(self, title_lower: str, keywords: List[str]) -> float:
-        title_matches = sum(1 for keyword in keywords if keyword.lower() in title_lower)
-        return min(title_matches * 0.15, 0.4)
-    
-    def _calculate_quality_bonus(self, text: str) -> float:
-        bonus = 0.0
-        if re.search(r'\$[\d,]+|\d+%|\d+\s*(million|billion|trillion)', text):
-            bonus += 0.08
-        action_words = ['announced', 'launched', 'acquired', 'raised', 'expanded', 'partnered', 'introduced', 'unveiled']
-        action_count = sum(1 for word in action_words if word in text)
-        bonus += min(action_count * 0.03, 0.12)
-        business_words = ['company', 'startup', 'firm', 'corporation', 'business', 'enterprise']
-        if any(word in text for word in business_words):
-            bonus += 0.05
-        tech_words = ['technology', 'platform', 'solution', 'system', 'API', 'integration']
-        tech_count = sum(1 for word in tech_words if word in text)
-        bonus += min(tech_count * 0.02, 0.08)
-        return min(bonus, 0.25)
-
-    async def monitor_all_trends(self) -> List[Dict[str, Any]]:
-        """Monitor all trends and return collected articles"""
-        if not self.config.trends_enabled:
-            logger.info("Trends monitoring disabled")
-            return []
-            
-        logger.info("Starting trends monitoring...")
-        all_trend_articles = []
-        semantic_scored_count = 0
-        
-        for trend_key, trend_config in self.trends.items():
-            logger.info(f"Monitoring trend: {trend_config.name}")
-            
-            # Collect from Google Search
-            if trend_config.google_search_enabled and self.google_search:
-                try:
-                    articles = await self.google_search.search_trend(
-                        trend_key, trend_config.keywords, max_results=20
-                    )
-                    
-                    for article in articles:
-                        # Calculate relevance score
-                        article['relevance_score'] = self.calculate_relevance_score(
-                            article['content'], article['title'], trend_config.keywords
-                        )
-                        
-                        # Calculate quality score
-                        article['quality_score'] = (article['relevance_score'] + article['region_confidence']) / 2
-                        
-                        # Save if meets minimum threshold
-                        if article['relevance_score'] >= trend_config.min_relevance_score:
-                            if self.database.save_article(article):
-                                all_trend_articles.append(article)
-                                
-                    logger.info(f"Google Search: {len(articles)} articles for {trend_key}")
-                    
-                except Exception as e:
-                    logger.error(f"Google Search error for {trend_key}: {e}")
-            
-            # Collect from RSS feeds
-            if self.rss_validator:
-                for rss_url in trend_config.rss_feeds:
-                    try:
-                        rss_articles = await self.rss_validator.extract_from_rss_preserve_titles(
-                            rss_url, f"{trend_key}_rss"
-                        )
-                        for article in rss_articles:
-                            # Calculate relevance score
-                            article['relevance_score'] = self.calculate_relevance_score(
-                                article['content'], article['title'], trend_config.keywords
-                            )
-                            
-                            # Calculate quality score
-                            article['quality_score'] = (article['relevance_score'] + article['region_confidence']) / 2
-                            
-                            # Save if meets minimum threshold
-                            if article['relevance_score'] >= trend_config.min_relevance_score:
-                                if self.database.save_article(article):
-                                    all_trend_articles.append(article)
-                        
-                        domain = urlparse(rss_url).netloc
-                        logger.info(f"RSS: {len(rss_articles)} articles from {domain} for {trend_key}")
-                    except Exception as e:
-                        domain = urlparse(rss_url).netloc
-                        logger.error(f"RSS error for {domain}: {e}")
-        
-        # Apply semantic scoring to top articles
-        if (self.llm_integration.semantic_scoring_enabled and 
-            all_trend_articles and 
-            semantic_scored_count < self.config.semantic_total_limit):
-            
-            # Sort by relevance and take top articles for semantic scoring
-            all_trend_articles.sort(key=lambda x: x['relevance_score'], reverse=True)
-            remaining_quota = self.config.semantic_total_limit - semantic_scored_count
-            articles_to_score = all_trend_articles[:remaining_quota]
-            
-            logger.info(f"Running semantic scoring for top {len(articles_to_score)} trend articles...")
-            
-            for article in articles_to_score:
-                try:
-                    trend_config = self.trends.get(article['trend_category'])
-                    if trend_config:
-                        semantic_score = await self.llm_integration.evaluate_semantic_relevance(
-                            article['title'], article['content'], trend_config.keywords
-                        )
-                        if semantic_score > 0:
-                            article['semantic_relevance_score'] = semantic_score
-                            semantic_scored_count += 1
-                            
-                            # Update quality score with semantic component
-                            combined = article['relevance_score'] * 0.6 + semantic_score * 0.4
-                            article['quality_score'] = (combined + article['region_confidence']) / 2
-                            
-                            # Re-save with updated semantic score
-                            self.database.save_article(article)
-                            
-                            if semantic_scored_count >= self.config.semantic_total_limit:
-                                break
-                except Exception as e:
-                    logger.debug(f"Semantic scoring failed for article: {e}")
-                    continue
-        
-        logger.info(f"Trends monitoring completed. Total articles: {len(all_trend_articles)}")
-        logger.info(f"Semantic scoring applied to: {semantic_scored_count} articles")
-        return all_trend_articles
-
-# --------------------------------------------------------------------------------------
-# Article Summarizer (Enhanced from trends system)
+# Article Processing with Enhanced LLM Integration
 # --------------------------------------------------------------------------------------
 
 class ArticleSummarizer:
-    """Enhanced article summarization (rule-based primary)"""
+    """Enhanced article summarization (rule-based primary, LLM fallback)"""
     
     def __init__(self):
         self.max_summary_length = 200
@@ -2505,73 +1480,979 @@ class ArticleSummarizer:
             summary += '.'
         return summary
 
+class ArticleProcessor:
+    """Handles article processing pipeline with enhanced LLM integration"""
+    
+    def __init__(self, config: UnifiedConfig, region_filter: EnhancedRegionFilter, llm_integration: EnhancedLLMIntegration):
+        self.config = config
+        self.region_filter = region_filter
+        self.llm_integration = llm_integration
+        self.summarizer = ArticleSummarizer()
+    
+    def calculate_relevance_score(self, content: str, title: str, keywords: List[str]) -> float:
+        """Enhanced relevance scoring with semantic matching"""
+        try:
+            full_text = f"{title} {title} {content}".lower()
+            if not full_text.strip():
+                return 0.0
+            exact_matches = 0
+            partial_matches = 0
+            semantic_matches = 0
+            for keyword in keywords:
+                keyword_lower = keyword.lower()
+                if keyword_lower in full_text:
+                    exact_matches += 1
+                else:
+                    keyword_words = keyword_lower.split()
+                    if len(keyword_words) > 1:
+                        word_matches = sum(1 for word in keyword_words if word in full_text)
+                        if word_matches >= len(keyword_words) * 0.4:
+                            partial_matches += 1
+                    semantic_terms = self._get_semantic_terms(keyword_lower)
+                    if any(term in full_text for term in semantic_terms):
+                        semantic_matches += 1
+            if exact_matches == 0 and partial_matches == 0 and semantic_matches == 0:
+                return 0.0
+            total_keywords = max(len(keywords), 1)
+            exact_score = (exact_matches / total_keywords)
+            partial_score = (partial_matches / total_keywords) * 0.6
+            semantic_score = (semantic_matches / total_keywords) * 0.3
+            base_score = exact_score + partial_score + semantic_score
+            title_bonus = self._calculate_title_bonus(title.lower(), keywords)
+            quality_bonus = self._calculate_quality_bonus(full_text)
+            recency_bonus = 0.05
+            final_score = min(base_score + title_bonus + quality_bonus + recency_bonus, 1.0)
+            return final_score
+        except Exception as e:
+            logger.error(f"Relevance scoring failed: {e}")
+            return 0.0
+    
+    def _get_semantic_terms(self, keyword: str) -> List[str]:
+        semantic_map = {
+            'instant payments': ['real-time', 'immediate', 'live payments', 'fast payments'],
+            'open banking': ['financial data sharing', 'bank APIs', 'PSD2', 'account information'],
+            'stablecoin': ['digital currency', 'cryptocurrency', 'CBDC', 'virtual currency'],
+            'contactless': ['NFC', 'tap to pay', 'proximity payments', 'mobile payments'],
+            'fraud prevention': ['risk management', 'security', 'anti-fraud', 'transaction monitoring'],
+            'cross border': ['international payments', 'remittance', 'global payments', 'FX'],
+            'BNPL': ['installments', 'deferred payment', 'buy now pay later', 'point of sale financing'],
+            'payment orchestration': ['smart routing', 'payment optimization', 'routing'],
+            'digital wallet': ['mobile wallet', 'e-wallet', 'electronic wallet', 'payment app'],
+            'PCI DSS': ['payment security', 'compliance', 'data protection', 'security standards']
+        }
+        return semantic_map.get(keyword, [])
+    
+    def _calculate_title_bonus(self, title_lower: str, keywords: List[str]) -> float:
+        title_matches = sum(1 for keyword in keywords if keyword.lower() in title_lower)
+        return min(title_matches * 0.15, 0.4)
+    
+    def _calculate_quality_bonus(self, text: str) -> float:
+        bonus = 0.0
+        if re.search(r'\$[\d,]+|\d+%|\d+\s*(million|billion|trillion)', text):
+            bonus += 0.08
+        action_words = ['announced', 'launched', 'acquired', 'raised', 'expanded', 'partnered', 'introduced', 'unveiled']
+        action_count = sum(1 for word in action_words if word in text)
+        bonus += min(action_count * 0.03, 0.12)
+        business_words = ['company', 'startup', 'firm', 'corporation', 'business', 'enterprise']
+        if any(word in text for word in business_words):
+            bonus += 0.05
+        tech_words = ['technology', 'platform', 'solution', 'system', 'API', 'integration']
+        tech_count = sum(1 for word in tech_words if word in text)
+        bonus += min(tech_count * 0.02, 0.08)
+        return min(bonus, 0.25)
+    
+    async def process_article(self, article: ContentSource, trend_config: Optional[TrendConfig] = None) -> ContentSource:
+        """Process a single article through the complete pipeline with FULL LLM INTEGRATION"""
+        try:
+            # Calculate relevance for trends
+            if trend_config:
+                article.relevance_score = self.calculate_relevance_score(
+                    article.content, article.title, trend_config.keywords
+                )
+            else:
+                # For companies, set high relevance since they're inherently relevant
+                article.relevance_score = 0.8
+            
+            # Update quality score
+            if hasattr(article, 'region_confidence'):
+                article.quality_score = (article.relevance_score + article.region_confidence) / 2
+            else:
+                article.quality_score = article.relevance_score
+            
+            # ENHANCED: LLM title enhancement (WORKS FOR BOTH COMPANIES AND TRENDS)
+            if self.llm_integration.enabled and not article.enhanced_title:
+                article.enhanced_title = await self.llm_integration.enhance_title(
+                    article.title, article.content, force=False
+                )
+                # Use enhanced title as display title
+                if article.enhanced_title and len(article.enhanced_title) >= 15:
+                    article.title = article.enhanced_title
+            
+            # ENHANCED: Generate summary (rule-based first, then LLM fallback)
+            if not article.summary:
+                article.summary = await self.summarizer.summarize_article(
+                    article.content, article.enhanced_title or article.title
+                )
+            
+            # ENHANCED: LLM summary fallback (WORKS FOR BOTH COMPANIES AND TRENDS)
+            if self._should_use_llm_summary_fallback(article):
+                llm_summary = await self.llm_integration.generate_summary(
+                    article.content, article.enhanced_title or article.title
+                )
+                if llm_summary:
+                    article.summary = llm_summary
+            
+            return article
+        except Exception as e:
+            raise ContentProcessingError(f"Article processing failed: {e}")
+    
+    def _should_use_llm_summary_fallback(self, article: ContentSource) -> bool:
+        """Determine if LLM summary fallback should be used"""
+        if not self.llm_integration.enabled or not self.config.llm_summary_fallback_enabled:
+            return False
+        
+        summary_too_short = len(article.summary.strip()) < self.config.llm_summary_min_chars_trigger
+        content_too_long = len(article.content or "") > self.config.llm_summary_long_content_trigger
+        
+        return summary_too_short or (content_too_long and summary_too_short)
+    
+    def is_duplicate(self, source: ContentSource, recent_hashes: Set[str], existing: List[ContentSource]) -> bool:
+        """Efficient duplicate detection"""
+        if source.content_hash in recent_hashes:
+            return True
+        for existing_source in existing[-30:]:
+            if (source.content_hash == existing_source.content_hash or
+                source.url == existing_source.url or
+                self._title_similarity(source.title, existing_source.title) > 0.9):
+                return True
+        return False
+    
+    def _title_similarity(self, title1: str, title2: str) -> float:
+        """Calculate title similarity"""
+        if not title1 or not title2:
+            return 0.0
+        if abs(len(title1) - len(title2)) > max(len(title1), len(title2)) * 0.6:
+            return 0.0
+        words1 = set(title1.lower().split())
+        words2 = set(title2.lower().split())
+        if not words1 or not words2:
+            return 0.0
+        intersection = words1.intersection(words2)
+        union = words1.union(words2)
+        return len(intersection) / len(union) if union else 0.0
+
 # --------------------------------------------------------------------------------------
-# Unified Email Generator (Complete Implementation)
+# Company Monitoring System
+# --------------------------------------------------------------------------------------
+
+class CompanyMonitoringSystem:
+    """Monitors fintech companies using web scraping and RSS with FULL LLM INTEGRATION"""
+    
+    def __init__(self, config: UnifiedConfig, region_filter: EnhancedRegionFilter, llm: EnhancedLLMIntegration, processor: ArticleProcessor):
+        self.config = config
+        self.region_filter = region_filter
+        self.llm = llm
+        self.processor = processor
+        
+    def collect_from_rss_feed(self, feed_url: str, company_key: str) -> List[ContentSource]:
+        """Collect articles from RSS feed"""
+        articles = []
+        
+        try:
+            resp = http_get_bypass(feed_url, bypass_robots=self.config.bypass_robots_txt)
+            feed = feedparser.parse(resp.content)
+            
+            if not hasattr(feed, 'entries') or not feed.entries:
+                return articles
+            
+            # FIXED: Use timezone-aware cutoff date
+            cutoff = utc_date_filter(self.config.max_age_days)
+            
+            for entry in feed.entries[:self.config.company_max_items_per_source]:
+                try:
+                    title = getattr(entry, 'title', '').strip()
+                    link = getattr(entry, 'link', '').strip()
+                    
+                    if not title or not link:
+                        continue
+                    
+                    # Parse content
+                    content = ""
+                    if hasattr(entry, 'summary'):
+                        content = BeautifulSoup(entry.summary, 'html.parser').get_text(strip=True)
+                    
+                    # FIXED: Parse date with timezone awareness
+                    entry_date = None
+                    if hasattr(entry, 'published'):
+                        entry_date = parse_date_robust(entry.published)
+                    elif hasattr(entry, 'published_parsed') and entry.published_parsed:
+                        try:
+                            # Convert to timezone-aware UTC
+                            naive_dt = datetime.datetime(*entry.published_parsed[:6])
+                            entry_date = naive_dt.replace(tzinfo=datetime.timezone.utc)
+                        except:
+                            pass
+                    
+                    # FIXED: Compare timezone-aware dates
+                    if entry_date and entry_date < cutoff:
+                        continue
+                    
+                    if self.region_filter.should_exclude_by_title(title):
+                        continue
+                    
+                    if not self.region_filter.is_us_eu_domain(link):
+                        continue
+                    
+                    article = ContentSource(
+                        url=link,
+                        title=title,
+                        content=content,
+                        source_type='company',
+                        category=company_key,
+                        published_date=entry_date,
+                        relevance_score=0.8  # Company articles are inherently relevant
+                    )
+                    
+                    articles.append(article)
+                    
+                except Exception as e:
+                    logger.debug(f"Error processing RSS entry: {e}")
+                    continue
+            
+        except Exception as e:
+            logger.error(f"RSS collection failed for {feed_url}: {e}")
+        
+        return articles
+    
+    def collect_from_page_scraping(self, page_url: str, company_key: str) -> List[ContentSource]:
+        """Collect articles from web page scraping"""
+        articles = []
+        
+        try:
+            resp = http_get_bypass(page_url, bypass_robots=self.config.bypass_robots_txt)
+            soup = BeautifulSoup(resp.text, "html.parser")
+            # First try RSS auto-discovery
+            try:
+                rss_feeds = autodiscover_rss(resp.text, page_url)
+                for feed in rss_feeds[:3]:
+                    try:
+                        articles.extend(self.collect_from_rss_feed(feed, company_key))
+                        if articles:
+                            return articles[: self.config.company_max_items_per_source]
+                    except Exception as _:
+                        continue
+            except Exception as _:
+                pass
+
+            # Next, try JSON-LD extraction (often present on press pages)
+            try:
+                jsonld_items = extract_articles_from_jsonld(resp.text, page_url)
+                if jsonld_items:
+                    for item in jsonld_items[: self.config.company_max_items_per_source]:
+                        articles.append(ContentSource(
+                            title=item.get("title",""),
+                            summary=item.get("summary",""),
+                            url=item.get("url",""),
+                            domain=urlparse(item.get("url","")).netloc,
+                            published_date=parse_date_robust(item.get("date","")),
+                            relevance_score=0.8,
+                            source_type='company',
+                            category=company_key
+                        ))
+                    return articles
+            except Exception as _:
+                pass
+
+            # Domain-specific fallbacks
+            try:
+                host = urlparse(page_url).netloc
+                fallback_items: List[Dict[str,str]] = []
+                if "mastercard.com" in host:
+                    fallback_items = parse_mastercard_press(resp.text, page_url)
+                elif "adyen.com" in host:
+                    fallback_items = parse_adyen_press(resp.text, page_url)
+                elif any(h in host for h in ("pypl.com","affirm.com","toasttab.com")):
+                    fallback_items = parse_q4_list(resp.text, page_url)
+
+                for item in fallback_items[: self.config.company_max_items_per_source]:
+                    articles.append(ContentSource(
+                        title=item.get("title",""),
+                        summary=item.get("summary",""),
+                        url=item.get("url",""),
+                        domain=urlparse(item.get("url","")).netloc,
+                        published_date=parse_date_robust(item.get("date","")),
+                        relevance_score=0.75,
+                        source_type='company',
+                        category=company_key
+                    ))
+                if articles:
+                    return articles
+            except Exception as _:
+                pass
+
+            
+            # Enhanced selectors for news articles
+            selectors = [
+                'article', '[class*="news"]', '[class*="press"]', '[class*="release"]',
+                '[class*="article"]', '[class*="story"]', '[class*="post"]',
+                '.newsroom-item', '.press-release', '.news-item'
+            ]
+            
+            candidates = []
+            for selector in selectors:
+                candidates.extend(soup.select(selector))
+            
+            # Remove duplicates
+            seen = set()
+            unique_candidates = []
+            for candidate in candidates:
+                if id(candidate) not in seen:
+                    seen.add(id(candidate))
+                    unique_candidates.append(candidate)
+            
+            # FIXED: Use timezone-aware cutoff date
+            cutoff = utc_date_filter(self.config.max_age_days)
+            
+            for candidate in unique_candidates[:self.config.company_max_items_per_source]:
+                try:
+                    # Find link
+                    link_elem = candidate.find('a', href=True)
+                    if not link_elem:
+                        link_elem = candidate.find_parent('a', href=True)
+                    if not link_elem:
+                        continue
+                    
+                    href = urljoin(page_url, link_elem['href'])
+                    title = link_elem.get_text(strip=True)
+                    
+                    if not title or len(title) < 10:
+                        # Try to find title in nearby elements
+                        title_candidates = [
+                            candidate.find('h1'), candidate.find('h2'), candidate.find('h3'),
+                            candidate.find('[class*="title"]'), candidate.find('[class*="headline"]')
+                        ]
+                        for t in title_candidates:
+                            if t and t.get_text(strip=True):
+                                title = t.get_text(strip=True)
+                                break
+                    
+                    if not title or len(title) < 10:
+                        continue
+                    
+                    if self.region_filter.should_exclude_by_title(title):
+                        continue
+                    
+                    if not self.region_filter.is_us_eu_domain(href):
+                        continue
+                    
+                    # Extract content
+                    content = candidate.get_text(strip=True)[:500]  # First 500 chars
+                    
+                    # FIXED: Extract date with timezone awareness
+                    entry_date = None
+                    date_elem = candidate.find('time')
+                    if date_elem:
+                        date_text = date_elem.get('datetime') or date_elem.get_text(strip=True)
+                        entry_date = parse_date_robust(date_text)
+                    
+                    # For recent content, be more lenient with dates
+                    if not entry_date:
+                        entry_date = utc_now()
+                    
+                    article = ContentSource(
+                        url=href,
+                        title=title,
+                        content=content,
+                        source_type='company',
+                        category=company_key,
+                        published_date=entry_date,
+                        relevance_score=0.7  # Page scraping articles are relevant
+                    )
+                    
+                    articles.append(article)
+                    
+                except Exception as e:
+                    logger.debug(f"Error processing page candidate: {e}")
+                    continue
+            
+        except Exception as e:
+            logger.error(f"Page scraping failed for {page_url}: {e}")
+        
+        return articles
+    
+    async def monitor_companies(self) -> List[ContentSource]:
+        """Monitor all companies for updates with FULL LLM INTEGRATION"""
+        logger.info("Starting company monitoring...")
+        all_articles = []
+        
+        for company in COMPANIES:
+            if not company.scrape_enabled:
+                continue
+                
+            logger.info(f"Processing company: {company.name}")
+            company_articles = []
+            
+            # Process RSS feeds
+            for feed_url in company.feeds:
+                try:
+                    feed_articles = self.collect_from_rss_feed(feed_url, company.key)
+                    company_articles.extend(feed_articles)
+                    logger.info(f"RSS: {len(feed_articles)} articles from {company.name}")
+                except Exception as e:
+                    logger.error(f"RSS error for {company.name}: {e}")
+            
+            # Process web pages
+            for page_url in company.pages:
+                try:
+                    page_articles = self.collect_from_page_scraping(page_url, company.key)
+                    company_articles.extend(page_articles)
+                    logger.info(f"Page scraping: {len(page_articles)} articles from {company.name}")
+                except Exception as e:
+                    logger.error(f"Page scraping error for {company.name}: {e}")
+            
+            # ENHANCED: Process each article with FULL LLM INTEGRATION
+            for article in company_articles:
+                try:
+                    processed_article = await self.processor.process_article(article)
+                    all_articles.append(processed_article)
+                except Exception as e:
+                    logger.error(f"Error processing company article: {e}")
+                    continue
+            
+            logger.info(f"Total for {company.name}: {len(company_articles)} articles")
+            
+            # Polite delay
+            await asyncio.sleep(0.5)
+        
+        logger.info(f"Company monitoring completed. Total: {len(all_articles)} articles")
+        return all_articles
+
+# --------------------------------------------------------------------------------------
+# Trend Monitoring System with Google Search
+# --------------------------------------------------------------------------------------
+
+class GoogleSearchIntegration:
+    """Enhanced Google Search API integration"""
+    
+    def __init__(self, config: UnifiedConfig, region_filter: EnhancedRegionFilter, keyword_expander: KeywordExpansionSystem):
+        self.config = config
+        self.region_filter = region_filter
+        self.keyword_expander = keyword_expander
+        self.enabled = bool(config.google_api_key and config.google_search_engine_id)
+        self.queries_today = 0
+        
+        if not self.enabled:
+            logger.warning("Google Search API not configured - trends will use RSS only")
+        else:
+            logger.info(f"Google Search API enabled with daily limit: {config.google_daily_limit}")
+    
+    async def search_trend(self, trend_name: str, base_keywords: List[str], max_results: int = 20) -> List[ContentSource]:
+        """Enhanced trend search with expanded keywords"""
+        if not self.enabled or self.queries_today >= self.config.google_daily_limit:
+            if not self.enabled:
+                logger.debug(f"Google Search not available for {trend_name}")
+            else:
+                logger.warning(f"Google Search daily quota exceeded ({self.config.google_daily_limit})")
+            return []
+        
+        expanded_keywords = self.keyword_expander.expand_keywords(trend_name, base_keywords)
+        sources = []
+        
+        try:
+            search_strategies = []
+            for keyword in expanded_keywords[:4]:
+                search_strategies.append(keyword)
+            if len(expanded_keywords) >= 2:
+                search_strategies.append(f"{expanded_keywords[0]} {expanded_keywords[1]}")
+            
+            logger.info(f"Google Search for {trend_name} with {len(search_strategies)} strategies")
+            async with aiohttp.ClientSession() as session:
+                for search_query in search_strategies[:3]:
+                    if self.queries_today >= self.config.google_daily_limit:
+                        break
+                    try:
+                        params = {
+                            'key': self.config.google_api_key,
+                            'cx': self.config.google_search_engine_id,
+                            'q': search_query,
+                            'num': 10,
+                            'dateRestrict': 'w1',
+                            'sort': 'date',
+                            'lr': 'lang_en',
+                            'safe': 'medium'
+                        }
+                        async with session.get(
+                            'https://www.googleapis.com/customsearch/v1',
+                            params=params,
+                            timeout=aiohttp.ClientTimeout(total=30)
+                        ) as response:
+                            if response.status == 200:
+                                data = await response.json()
+                                items = data.get('items', [])
+                                for item in items:
+                                    try:
+                                        source = await self._process_search_result(
+                                            item, trend_name, expanded_keywords
+                                        )
+                                        if source:
+                                            sources.append(source)
+                                    except Exception as e:
+                                        logger.warning(f"Error processing Google result: {e}")
+                                self.queries_today += 1
+                            elif response.status == 429:
+                                logger.warning("Google Search API rate limit exceeded")
+                                self.queries_today = self.config.google_daily_limit
+                                break
+                            else:
+                                raise APIError(f"Google Search API error {response.status}")
+                    except aiohttp.ClientError as e:
+                        logger.error(f"Google Search HTTP error for {trend_name}: {e}")
+                        continue
+                await asyncio.sleep(0.5)
+        except Exception as e:
+            logger.error(f"Google Search failed for {trend_name}: {e}")
+        
+        unique_sources = self._deduplicate_sources(sources)
+        logger.info(f"Google Search found {len(unique_sources)} unique articles for {trend_name}")
+        return unique_sources
+    
+    async def _process_search_result(self, item: Dict, trend_name: str, keywords: List[str]) -> Optional[ContentSource]:
+        """Process search result into ContentSource"""
+        url = item.get('link', '').strip()
+        full_title = item.get('title', '').strip()
+        snippet = item.get('snippet', '').strip()
+        
+        if not url or not full_title or len(full_title) < 5:
+            return None
+        
+        if self.region_filter.should_exclude_by_title(full_title):
+            return None
+        
+        if not self.region_filter.is_us_eu_domain(url):
+            return None
+        
+        region_confidence = self.region_filter.assess_content_relevance(snippet)
+        if region_confidence < 0.3:
+            return None
+        
+        cleaned_title = self._clean_title_preserve_all_words(full_title)
+        published_date = self._extract_published_date(item)
+        domain = urlparse(url).netloc
+        
+        source = ContentSource(
+            url=url,
+            title=cleaned_title,
+            original_title=full_title,
+            source_type='trend',
+            domain=domain,
+            content=snippet,
+            published_date=published_date,
+            category=trend_name,
+            word_count=len(snippet.split()) if snippet else 0,
+            search_keywords=keywords[:5],
+            region_confidence=region_confidence
+        )
+        return source
+    
+    def _clean_title_preserve_all_words(self, title: str) -> str:
+        if not title:
+            return ""
+        cleaned = re.sub(r'\s+', ' ', title.strip())
+        cleaned = re.sub(r'&[a-zA-Z0-9]+;', '', cleaned)
+        patterns = [
+            r'\s*-\s*[^-]*(?:\.com|\.org|\.net|news|times|post|journal).*$',
+            r'\s*\|\s*[^|]*(?:\.com|\.org|\.net|news|times|post|journal).*$',
+            r'\s*::\s*.*$',
+        ]
+        for pattern in patterns:
+            cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'^[^\w\s]+|[^\w\s]+$', '', cleaned).strip()
+        if len(cleaned) < len(title) * 0.6:
+            cleaned = title.strip()
+        return cleaned
+    
+    def _extract_published_date(self, item: Dict) -> Optional[datetime.datetime]:
+        """FIXED: Extract published date with timezone awareness"""
+        if 'pagemap' in item and 'metatags' in item['pagemap']:
+            for meta in item['pagemap']['metatags']:
+                date_str = meta.get('article:published_time') or meta.get('datePublished')
+                if date_str:
+                    try:
+                        if 'T' in date_str:
+                            # Parse ISO format and ensure timezone awareness
+                            dt = datetime.datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+                            return ensure_utc(dt)
+                    except:
+                        pass
+        return None
+    
+    def _deduplicate_sources(self, sources: List[ContentSource]) -> List[ContentSource]:
+        unique_sources = []
+        seen_urls = set()
+        seen_hashes = set()
+        for source in sources:
+            if (source.url not in seen_urls and 
+                source.content_hash not in seen_hashes):
+                unique_sources.append(source)
+                seen_urls.add(source.url)
+                seen_hashes.add(source.content_hash)
+        return unique_sources
+
+class EnhancedRSSFeedValidator:
+    """RSS feed validation with better error handling"""
+    
+    def __init__(self, region_filter: EnhancedRegionFilter):
+        self.region_filter = region_filter
+    
+    @with_retry(max_retries=3, exceptions=(aiohttp.ClientError,))
+    async def validate_rss_feed(self, rss_url: str) -> bool:
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+                'Accept': 'application/rss+xml, application/xml, text/xml, application/atom+xml, */*',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive'
+            }
+            async with aiohttp.ClientSession() as session:
+                try:
+                    async with session.get(
+                        rss_url,
+                        headers=headers,
+                        timeout=aiohttp.ClientTimeout(total=30),
+                        ssl=True
+                    ) as response:
+                        if 200 <= response.status < 400:
+                            text = await response.text()
+                            return self._is_valid_feed_content(text)
+                except:
+                    try:
+                        async with session.get(
+                            rss_url,
+                            headers=headers,
+                            timeout=aiohttp.ClientTimeout(total=30),
+                            ssl=False
+                        ) as response:
+                            if 200 <= response.status < 400:
+                                text = await response.text()
+                                return self._is_valid_feed_content(text)
+                    except:
+                        pass
+            return False
+        except Exception as e:
+            logger.debug(f"RSS validation failed for {rss_url}: {e}")
+            return False
+    
+    @staticmethod
+    def _is_valid_feed_content(content: str) -> bool:
+        if not content or len(content) < 50:
+            return False
+        content_lower = content.lower()
+        feed_indicators = [
+            '<rss', '<feed', '<atom', '<?xml',
+            'application/rss+xml', 'application/atom+xml',
+            '<channel>', '<entry>', '<item>'
+        ]
+        return any(indicator in content_lower for indicator in feed_indicators)
+
+    async def extract_from_rss_preserve_titles(self, rss_url: str, source_name: str) -> List[ContentSource]:
+        sources = []
+        try:
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (compatible; UnifiedFinTechUpdate/3.2; +https://example.com/bot)',
+                'Accept': 'application/rss+xml, application/xml, text/xml, application/atom+xml, */*',
+                'Accept-Encoding': 'gzip, deflate',
+                'Connection': 'keep-alive'
+            }
+            async with aiohttp.ClientSession() as session:
+                rss_content = None
+                approaches = [
+                    {"ssl": True, "timeout": 45},
+                    {"ssl": False, "timeout": 45},
+                    {"ssl": False, "timeout": 60}
+                ]
+                for approach in approaches:
+                    try:
+                        async with session.get(
+                            rss_url,
+                            headers=headers,
+                            timeout=aiohttp.ClientTimeout(total=approach["timeout"]),
+                            ssl=approach["ssl"],
+                            allow_redirects=True
+                        ) as response:
+                            if response.status == 200:
+                                rss_content = await response.text()
+                                break
+                            elif response.status in [301, 302, 307, 308]:
+                                redirect_url = response.headers.get('Location')
+                                if redirect_url:
+                                    logger.info(f"RSS feed redirected: {rss_url} -> {redirect_url}")
+                                    async with session.get(
+                                        redirect_url,
+                                        headers=headers,
+                                        timeout=aiohttp.ClientTimeout(total=approach["timeout"]),
+                                        ssl=approach["ssl"]
+                                    ) as redirect_response:
+                                        if redirect_response.status == 200:
+                                            rss_content = await redirect_response.text()
+                                            break
+                    except Exception as e:
+                        logger.debug(f"RSS approach failed for {rss_url}: {e}")
+                        continue
+                
+                if not rss_content:
+                    logger.warning(f"Failed to fetch RSS content from: {rss_url}")
+                    return sources
+                
+                if not self._is_valid_feed_content(rss_content):
+                    logger.warning(f"RSS content validation failed: {rss_url}")
+                    return sources
+                
+                feed = feedparser.parse(rss_content)
+                if not getattr(feed, 'entries', None):
+                    logger.warning(f"No entries found in RSS feed: {rss_url}")
+                    return sources
+                
+                if hasattr(feed, 'bozo') and feed.bozo:
+                    logger.debug(f"RSS feed has parsing issues but proceeding: {rss_url}")
+                
+                # FIXED: Use timezone-aware cutoff date
+                cutoff_date = utc_date_filter(14)  # 14-day window for RSS
+                
+                for entry in feed.entries[:30]:
+                    try:
+                        source = await self._process_rss_entry(entry, source_name, cutoff_date)
+                        if source:
+                            sources.append(source)
+                    except Exception as e:
+                        logger.debug(f"Error processing RSS entry from {rss_url}: {e}")
+                        continue
+                
+                logger.info(f"RSS extracted {len(sources)} articles from {source_name}")
+                
+        except Exception as e:
+            logger.error(f"RSS extraction failed for {rss_url}: {e}")
+        
+        return sources
+
+    async def _process_rss_entry(self, entry, source_name: str, cutoff_date: datetime.datetime) -> Optional[ContentSource]:
+        url = getattr(entry, 'link', '').strip()
+        full_title_raw = getattr(entry, 'title', '').strip()
+        if not url or not full_title_raw or len(full_title_raw) < 5:
+            return None
+        if self.region_filter.should_exclude_by_title(full_title_raw):
+            return None
+        domain = urlparse(url).netloc
+        if not self.region_filter.is_us_eu_domain(url):
+            return None
+        content = ""
+        if hasattr(entry, 'summary'):
+            content = BeautifulSoup(entry.summary, 'html.parser').get_text(strip=True)
+        elif hasattr(entry, 'description'):
+            content = BeautifulSoup(entry.description, 'html.parser').get_text(strip=True)
+        elif hasattr(entry, 'content'):
+            if isinstance(entry.content, list) and entry.content:
+                content = BeautifulSoup(entry.content[0].value, 'html.parser').get_text(strip=True)
+        region_confidence = self.region_filter.assess_content_relevance(content)
+        if region_confidence < 0.3:
+            return None
+        full_title = self._clean_title_comprehensive(full_title_raw)
+        
+        # FIXED: Parse date with timezone awareness
+        pub_date = None
+        if hasattr(entry, 'published_parsed') and entry.published_parsed:
+            try:
+                naive_dt = datetime.datetime(*entry.published_parsed[:6])
+                pub_date = naive_dt.replace(tzinfo=datetime.timezone.utc)
+            except:
+                pass
+        elif hasattr(entry, 'updated_parsed') and entry.updated_parsed:
+            try:
+                naive_dt = datetime.datetime(*entry.updated_parsed[:6])
+                pub_date = naive_dt.replace(tzinfo=datetime.timezone.utc)
+            except:
+                pass
+        
+        # FIXED: Compare timezone-aware dates
+        if pub_date and pub_date < cutoff_date:
+            return None
+        
+        source = ContentSource(
+            url=url,
+            title=full_title,
+            original_title=full_title_raw,
+            source_type='trend',
+            domain=domain,
+            published_date=pub_date,
+            content=content,
+            word_count=len(content.split()) if content else 0,
+            region_confidence=region_confidence
+        )
+        return source
+    
+    @staticmethod
+    def _clean_title_comprehensive(title: str) -> str:
+        if not title:
+            return ""
+        cleaned = re.sub(r'\s+', ' ', title.strip())
+        cleaned = re.sub(r'&[a-zA-Z0-9#]+;', '', cleaned)
+        cleaned = re.sub(r'<[^>]+>', '', cleaned)
+        patterns = [
+            r'\s*-\s*[^-]*(?:\.com|\.org|\.net|News|Times|Post|Journal).*',
+            r'\s*\|\s*[^|]*(?:\.com|\.org|\.net|News|Times|Post|Journal).*',
+            r'\s*::\s*.*'
+        ]
+        for pattern in patterns:
+            cleaned = re.sub(pattern, '', cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r'^[^\w\s]+|[^\w\s]+$', '', cleaned).strip()
+        if len(cleaned) < len(title) * 0.6:
+            cleaned = title.strip()
+        return cleaned
+
+class TrendMonitoringSystem:
+    """Monitors fintech trends using Google Search and RSS with FULL LLM INTEGRATION"""
+    
+    def __init__(self, config: UnifiedConfig, region_filter: EnhancedRegionFilter, llm: EnhancedLLMIntegration, processor: ArticleProcessor):
+        self.config = config
+        self.region_filter = region_filter
+        self.llm = llm
+        self.processor = processor
+        self.keyword_expander = KeywordExpansionSystem(config)
+        self.google_search = GoogleSearchIntegration(config, region_filter, self.keyword_expander)
+        self.rss_validator = EnhancedRSSFeedValidator(region_filter)
+        
+    async def search_google_for_trend(self, trend_key: str, trend_config: TrendConfig) -> List[ContentSource]:
+        """Search Google for trend-related articles"""
+        return await self.google_search.search_trend(trend_key, trend_config.keywords, max_results=20)
+    
+    async def collect_from_rss_feeds(self, trend_key: str, trend_config: TrendConfig) -> List[ContentSource]:
+        """Collect articles from RSS feeds for a trend"""
+        articles = []
+        
+        for rss_url in trend_config.rss_feeds:
+            try:
+                rss_articles = await self.rss_validator.extract_from_rss_preserve_titles(
+                    rss_url, f"{trend_key}_rss"
+                )
+                for article in rss_articles:
+                    article.category = trend_key
+                    article.source_type = 'trend'
+                    article.search_keywords = trend_config.keywords[:5]
+                articles.extend(rss_articles)
+                domain = urlparse(rss_url).netloc
+                logger.info(f"RSS: {len(rss_articles)} articles from {domain} for {trend_key}")
+            except Exception as e:
+                logger.error(f"RSS collection failed for {rss_url}: {e}")
+        
+        return articles
+    
+    async def monitor_trends(self) -> List[ContentSource]:
+        """Monitor all trends for updates with FULL LLM INTEGRATION"""
+        logger.info("Starting trend monitoring...")
+        all_articles = []
+        
+        for trend_key, trend_config in TRENDS.items():
+            logger.info(f"Processing trend: {trend_config.name}")
+            trend_articles = []
+            
+            # Google Search
+            if trend_config.google_search_enabled:
+                try:
+                    google_articles = await self.search_google_for_trend(trend_key, trend_config)
+                    trend_articles.extend(google_articles)
+                    logger.info(f"Google: {len(google_articles)} articles for {trend_key}")
+                except Exception as e:
+                    logger.error(f"Google Search error for {trend_key}: {e}")
+            
+            # RSS feeds
+            try:
+                rss_articles = await self.collect_from_rss_feeds(trend_key, trend_config)
+                trend_articles.extend(rss_articles)
+                logger.info(f"RSS: {len(rss_articles)} articles for {trend_key}")
+            except Exception as e:
+                logger.error(f"RSS error for {trend_key}: {e}")
+            
+            # ENHANCED: Process each article with FULL LLM INTEGRATION
+            for article in trend_articles:
+                try:
+                    processed_article = await self.processor.process_article(article, trend_config)
+                    all_articles.append(processed_article)
+                except Exception as e:
+                    logger.error(f"Error processing trend article: {e}")
+                    continue
+            
+            logger.info(f"Total for {trend_key}: {len(trend_articles)} articles")
+        
+        logger.info(f"Trend monitoring completed. Total: {len(all_articles)} articles")
+        return all_articles
+
+# --------------------------------------------------------------------------------------
+# ENHANCED Email Generator with Professional Card Layout
 # --------------------------------------------------------------------------------------
 
 class UnifiedEmailGenerator:
-    """Unified email generator for both company updates and trend analysis"""
+    """ENHANCED: Email generator with improved formatting and professional card layout"""
     
     def __init__(self, config: UnifiedConfig, llm_integration: EnhancedLLMIntegration):
         self.config = config
         self.llm_integration = llm_integration
         
-        # Company emoji mapping
-        self.company_emojis = {
-            "visa": "💳", "mastercard": "💳", "paypal": "💰", "stripe": "⚡",
-            "affirm": "📅", "toast": "🍞", "adyen": "🌍", "fiserv": "🏦",
-            "fis": "🏢", "gpn": "🌎"
-        }
+        # Company name mapping
+        self.company_names = {company.key: company.name for company in COMPANIES}
         
-        # Trend emoji mapping
-        self.trend_emojis = {
-            "instant_payments": "⚡", "a2a_open_banking": "🏦", "stablecoins": "💰",
-            "softpos_tap_to_pay": "📱", "cross_border": "🌍", "bnpl": "📅",
-            "payment_orchestration": "🎼", "fraud_ai": "🛡️", "pci_dss": "🔒",
-            "wallet_nfc": "💳", "embedded_finance": "🔗", "regtech_compliance": "⚖️"
+        # Trend info with emojis
+        self.trend_info = {
+            "instant_payments": {"name": "Instant Payments", "emoji": "⚡"},
+            "a2a_open_banking": {"name": "A2A & Open Banking", "emoji": "🏦"},
+            "stablecoins": {"name": "Stablecoins & CBDC", "emoji": "💰"},
+            "softpos_tap_to_pay": {"name": "SoftPOS & Tap to Pay", "emoji": "📱"},
+            "cross_border": {"name": "Cross-Border Payments", "emoji": "🌍"},
+            "bnpl": {"name": "Buy Now, Pay Later", "emoji": "📅"},
+            "payment_orchestration": {"name": "Payment Orchestration", "emoji": "🎼"},
+            "fraud_ai": {"name": "Fraud Prevention & AI", "emoji": "🛡️"},
+            "pci_dss": {"name": "PCI DSS & Security", "emoji": "🔒"},
+            "wallet_nfc": {"name": "Digital Wallets & NFC", "emoji": "💳"},
         }
     
-    async def generate_email(self, recent_articles: Dict[str, List[Dict]], 
-                            stats: Dict, database_stats: Dict = None) -> str:
-        """Generate unified email with both company updates and trend analysis"""
+    async def generate_unified_email(self, company_data: Dict[str, List[ContentSource]], 
+                                   trend_data: Dict[str, List[ContentSource]], 
+                                   stats: Dict, database_stats: Dict = None) -> str:
+        """Generate unified email with both company and trend sections"""
         try:
             today = datetime.date.today()
             date_str = today.strftime("%B %d, %Y")
             
-            company_articles = recent_articles.get('company_articles', [])
-            trend_articles = recent_articles.get('trend_articles', [])
-            
-            # Limit articles for email
-            company_articles = company_articles[:self.config.max_email_articles // 2]
-            trend_articles = trend_articles[:self.config.max_email_articles // 2]
-            
-            total_email_articles = len(company_articles) + len(trend_articles)
-            
             # Generate sections
-            company_section = await self._generate_company_section(company_articles)
-            trend_section = await self._generate_trends_section(trend_articles)
+            company_section = await self._generate_company_section(company_data)
+            trend_section = await self._generate_trend_section(trend_data)
             
-            # Stats for header
+            # Calculate stats
+            total_company_articles = sum(len(articles) for articles in company_data.values())
+            total_trend_articles = sum(len(articles) for articles in trend_data.values())
+            total_articles = total_company_articles + total_trend_articles
+            high_quality_articles = sum(1 for articles in list(company_data.values()) + list(trend_data.values()) 
+                                      for article in articles if article.relevance_score >= self.config.relevance_threshold)
+            semantic_scored_articles = sum(1 for articles in list(company_data.values()) + list(trend_data.values()) 
+                                         for article in articles if article.semantic_relevance_score > 0)
+            
             db_info = ""
             if database_stats:
                 db_info = f" • DB: {database_stats.get('total_articles', 0)} articles"
             llm_info = " • LLM Enhanced" if self.llm_integration.enabled else ""
-            semantic_count = sum(1 for a in trend_articles if a.get('semantic_relevance_score', 0) > 0)
-            semantic_info = f" • {semantic_count} semantic scored" if semantic_count > 0 else ""
+            semantic_info = f" • {semantic_scored_articles} semantic scored" if semantic_scored_articles > 0 else ""
             
-            # Enhanced email template
+            # ENHANCED: Professional email template with card layout
             html_template = f"""<!DOCTYPE html>
 <html>
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Unified FinTech Intelligence - {date_str}</title>
+    <title>FinTech Daily Update - {date_str}</title>
     <style>
         body {{
             font-family: Arial, sans-serif;
             line-height: 1.4;
             color: #000;
-            max-width: 800px;
+            max-width: 900px;
             margin: 0 auto;
             padding: 20px;
             background-color: #fff;
@@ -2579,10 +2460,12 @@ class UnifiedEmailGenerator:
         .header {{
             margin-bottom: 30px;
             text-align: left;
+            border-bottom: 2px solid #e6e6e6;
+            padding-bottom: 15px;
         }}
         .header h1 {{
-            margin: 0;
-            font-size: 24px;
+            margin: 0 0 5px 0;
+            font-size: 26px;
             font-weight: bold;
             color: #000;
         }}
@@ -2596,38 +2479,38 @@ class UnifiedEmailGenerator:
             color: #666;
             margin-top: 10px;
         }}
-        .section {{
+        .main-section {{
             margin-bottom: 40px;
         }}
-        .section-header {{
-            margin-bottom: 20px;
-            padding-bottom: 10px;
-            border-bottom: 2px solid #e6e6e6;
-        }}
-        .section-header h2 {{
-            margin: 0;
-            font-size: 20px;
-            font-weight: bold;
+        .main-section h2 {{
+            font-size: 22px;
             color: #000;
+            margin: 0 0 20px 0;
+            padding: 10px 0;
+            border-bottom: 1px solid #ddd;
         }}
         .subsection {{
             margin-bottom: 25px;
         }}
-        .subsection-header {{
-            margin-bottom: 12px;
-        }}
-        .subsection-header h3 {{
-            margin: 0;
-            font-size: 16px;
-            font-weight: bold;
+        .subsection h3 {{
+            font-size: 18px;
             color: #333;
+            margin: 0 0 12px 0;
+            display: flex;
+            align-items: center;
+        }}
+        .subsection h3 .emoji {{
+            margin-right: 8px;
         }}
         .article {{
-            padding: 12px 0;
-            border-top: 1px solid #e6e6e6;
+            margin-bottom: 18px;
         }}
-        .subsection .article:first-child {{
-            border-top: none;
+        .article-card {{
+            background: #fafafa;
+            border: 1px solid #e8e8e8;
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 14px;
         }}
         .article-title {{
             font-weight: 700;
@@ -2642,41 +2525,50 @@ class UnifiedEmailGenerator:
             text-decoration: underline;
         }}
         .article-summary {{
-            color: #222;
-            font-size: 13px;
+            color: #444;
+            font-size: 14px;
             margin-bottom: 6px;
             line-height: 1.4;
         }}
         .article-meta {{
-            font-size: 11px;
+            font-size: 12px;
             color: #666;
             display: flex;
             justify-content: space-between;
-            align-items: flex-start;
+            align-items: center;
             flex-wrap: wrap;
+        }}
+        .article-meta .left {{
+            display: flex;
+            gap: 8px;
+            align-items: center;
         }}
         .badge {{
             background-color: #f0f0f0;
-            padding: 1px 4px;
+            padding: 2px 6px;
             border-radius: 3px;
-            font-size: 10px;
-            margin-right: 3px;
+            font-size: 11px;
         }}
-        .quality-high {{
-            background-color: #e6f7e6;
+        .badge.company {{
+            background-color: #e8f5e8;
             color: #2e7d32;
         }}
-        .quality-medium {{
-            background-color: #fff3e0;
-            color: #ef6c00;
-        }}
-        .company-badge {{
+        .badge.trend {{
             background-color: #e3f2fd;
             color: #1565c0;
         }}
-        .semantic-score {{
+        .badge.high {{
+            background-color: #e6f7e6;
+            color: #2e7d32;
+        }}
+        .badge.llm {{
             background-color: #f3e5f5;
             color: #7b1fa2;
+        }}
+        .no-articles {{
+            color: #666;
+            font-style: italic;
+            padding: 15px 0;
         }}
         .footer {{
             text-align: center;
@@ -2686,543 +2578,570 @@ class UnifiedEmailGenerator:
             color: #666;
             border-top: 1px solid #ddd;
         }}
-        .no-content {{
-            padding: 20px 0;
-            color: #666;
-            font-style: italic;
-            text-align: center;
-        }}
     </style>
 </head>
 <body>
     <div class="header">
-        <h1>Unified FinTech Intelligence v3.0.2</h1>
+        <h1>FinTech Daily Update v3.2.0</h1>
         <p>{date_str}</p>
         <div class="stats">
-            {total_email_articles} articles • {stats.get('processing_time', 0):.1f}s{db_info}{llm_info}{semantic_info}
+            {total_articles} articles • Companies: {total_company_articles} • Trends: {total_trend_articles} • {high_quality_articles} high-quality • {stats.get('processing_time', 0):.1f}s{db_info}{llm_info}{semantic_info}
         </div>
     </div>
     
-    {company_section}
-    {trend_section}
+    <div class="main-section">
+        <h2>📈 Company Updates</h2>
+        {company_section}
+    </div>
+    
+    <div class="main-section">
+        <h2>🔍 Trend Analysis</h2>
+        {trend_section}
+    </div>
     
     <div class="footer">
-        <p>Unified FinTech Intelligence System v3.0.2 - Bug Fixes Applied</p>
-        <p>Companies: {'ENABLED' if self.config.companies_enabled else 'DISABLED'} • 
-           Trends: {'ENABLED' if self.config.trends_enabled else 'DISABLED'} • 
-           Email Limit: {self.config.max_email_articles}</p>
+        <p>Unified FinTech Daily Update System v3.2.0</p>
+        <p>Companies: {len(COMPANIES)} monitored • Trends: {len(TRENDS)} tracked • LLM Enhanced Titles & Summaries • Filter: {self.config.max_age_days} days</p>
     </div>
 </body>
 </html>"""
             return html_template
         except Exception as e:
-            logger.error(f"Unified email generation failed: {e}")
-            return f"<html><body><h2>Error generating unified digest: {e}</h2></body></html>"
+            logger.error(f"Email generation failed: {e}")
+            return f"<html><body><h2>Error generating digest: {e}</h2></body></html>"
     
-    async def _generate_company_section(self, company_articles: List[Dict]) -> str:
-        """FIXED: Generate company updates section - max 3 per company, no LLM for companies"""
-        if not self.config.companies_enabled:
-            return ""
+    async def _generate_company_section(self, company_data: Dict[str, List[ContentSource]]) -> str:
+        """Generate company updates section with LLM-enhanced titles"""
+        if not any(company_data.values()):
+            return '<div class="no-articles">No company updates found in the last 7 days.</div>'
+        
+        section_html = ""
+        
+        for company_key, articles in company_data.items():
+            if not articles:
+                continue
             
-        if not company_articles:
-            return """
-            <div class="section">
-                <div class="section-header">
-                    <h2>🏢 Company Updates</h2>
-                </div>
-                <div class="no-content">
-                    No company updates found in the last 3 days
-                </div>
-            </div>
-            """
-        
-        # Group by company
-        companies_data = {}
-        for article in company_articles:
-            company_key = article.get('company_key', 'unknown')
-            if company_key not in companies_data:
-                companies_data[company_key] = []
-            companies_data[company_key].append(article)
-        
-        subsections_html = ""
-        for company_key, articles in companies_data.items():
-            company_name = next((c.name for c in COMPANIES if c.key == company_key), company_key.title())
-            emoji = self.company_emojis.get(company_key, "🏢")
+            company_name = self.company_names.get(company_key, company_key.title())
             
             articles_html = ""
-            # FIXED: Limit to 3 articles per company
-            for article in articles[:3]:
-                try:
-                    # FIXED: No LLM enhancement for company articles - use original title
-                    display_title = article.get('original_title') or article.get('title', '')
-                    
-                    # FIXED: No LLM summary - use content preview only
-                    summary = article.get('content', '')[:150] + "..." if article.get('content', '') else ""
-                    
-                    # Article date
-                    article_date = ""
-                    if article.get('published_date'):
-                        try:
-                            if isinstance(article['published_date'], str):
-                                dt = datetime.datetime.fromisoformat(article['published_date'].replace('Z', '+00:00'))
-                            else:
-                                dt = article['published_date']
-                            article_date = dt.strftime("%Y-%m-%d")
-                        except:
-                            pass
-                    
-                    # Meta information
-                    domain = article.get('domain', '')
-                    source_type = article.get('source_type', '').upper()
-                    
-                    articles_html += f"""
-                    <div class="article">
-                        <a href="{article.get('url', '#')}" class="article-title" target="_blank">{display_title}</a>
-                        <div class="article-summary">{summary}</div>
-                        <div class="article-meta">
-                            <div><span class="badge company-badge">COMPANY</span></div>
-                            <div>{domain}{f' • {article_date}' if article_date else ''} • {source_type}</div>
-                        </div>
-                    </div>
-                    """
-                except Exception as e:
-                    logger.error(f"Error generating company article HTML: {e}")
-                    continue
-            
-            subsections_html += f"""
-            <div class="subsection">
-                <div class="subsection-header">
-                    <h3>{emoji} {company_name}</h3>
-                    <span style="font-size: 12px; color: #666;">{len(articles[:3])} articles</span>
-                </div>
-                {articles_html}
-            </div>
-            """
-        
-        return f"""
-        <div class="section">
-            <div class="section-header">
-                <h2>🏢 Company Updates (Last 3 Days)</h2>
-            </div>
-            {subsections_html}
-        </div>
-        """
-    
-    async def _generate_trends_section(self, trend_articles: List[Dict]) -> str:
-        """FIXED: Generate trends analysis section with LLM usage limits"""
-        if not self.config.trends_enabled:
-            return ""
-            
-        if not trend_articles:
-            return """
-            <div class="section">
-                <div class="section-header">
-                    <h2>📊 Trend Analysis</h2>
-                </div>
-                <div class="no-content">
-                    No high-quality trend articles found (45%+ relevance required)
-                </div>
-            </div>
-            """
-        
-        # Group by trend category
-        trends_data = {}
-        for article in trend_articles:
-            trend_key = article.get('trend_category', 'unknown')
-            if trend_key not in trends_data:
-                trends_data[trend_key] = []
-            trends_data[trend_key].append(article)
-        
-        # ADDED: Track LLM usage to enforce limits
-        title_enhancements_used = 0
-        summaries_used = 0
-        
-        subsections_html = ""
-        for trend_key, articles in trends_data.items():
-            # Get trend info
-            trend_name = trend_key.replace("_", " ").title()
-            emoji = self.trend_emojis.get(trend_key, "📊")
-            
-            articles_html = ""
-            for article in articles[:6]:  # Limit per trend
-                try:
-                    # FIXED: Limited title enhancement (max 25 total)
-                    display_title = article.get('enhanced_title') or article.get('title', '')
-                    if (self.llm_integration.enabled and 
-                        not article.get('enhanced_title') and 
-                        title_enhancements_used < self.config.llm_max_title_enhancements):
-                        enhanced = await self.llm_integration.enhance_title(
-                            display_title, article.get('content', ''), force=True
-                        )
-                        if enhanced and len(enhanced) >= 15:
-                            display_title = enhanced
-                            title_enhancements_used += 1
-                    
-                    # FIXED: Limited summarization (max 15 total)
-                    summary = article.get('summary', '')
-                    if (not summary and 
-                        summaries_used < self.config.llm_max_summaries and
-                        self.llm_integration.enabled):
-                        summary = await self.llm_integration.generate_summary(
-                            article.get('content', ''), display_title
-                        )
-                        if summary:
-                            summaries_used += 1
-                    
-                    # Fallback to content preview if no summary
-                    if not summary:
-                        summary = article.get('content', '')[:200] + "..."
-                    
-                    # Scores and badges
-                    relevance_pct = int(article.get('relevance_score', 0) * 100)
-                    semantic_pct = int(article.get('semantic_relevance_score', 0) * 100)
-                    
-                    quality_class = "quality-high" if relevance_pct >= 70 else "quality-medium"
-                    quality_text = "EXCELLENT" if relevance_pct >= 90 else "HIGH" if relevance_pct >= 70 else "GOOD"
-                    badges = f'<span class="badge {quality_class}">{quality_text}</span>'
-                    badges += f'<span class="badge">{relevance_pct}% match</span>'
-                    if semantic_pct > 0:
-                        badges += f'<span class="badge semantic-score">{semantic_pct}% semantic</span>'
-                    
-                    # Article date
-                    article_date = ""
-                    if article.get('published_date'):
-                        try:
-                            if isinstance(article['published_date'], str):
-                                dt = datetime.datetime.fromisoformat(article['published_date'].replace('Z', '+00:00'))
-                            else:
-                                dt = article['published_date']
-                            article_date = dt.strftime("%Y-%m-%d")
-                        except:
-                            pass
-                    
-                    # Meta information
-                    domain = article.get('domain', '')
-                    source_type = article.get('source_type', '').upper()
-                    
-                    articles_html += f"""
-                    <div class="article">
-                        <a href="{article.get('url', '#')}" class="article-title" target="_blank">{display_title}</a>
-                        <div class="article-summary">{summary}</div>
-                        <div class="article-meta">
-                            <div>{badges}</div>
-                            <div>{domain}{f' • {article_date}' if article_date else ''} • {source_type}</div>
-                        </div>
-                    </div>
-                    """
-                except Exception as e:
-                    logger.error(f"Error generating trend article HTML: {e}")
-                    continue
+            for article in articles[:5]:  # Limit per company
+                # ENHANCED: Force professional LLM title rewrite for email display
+                display_title = article.enhanced_title or article.title
+                if self.llm_integration.enabled and not article.enhanced_title:
+                    forced_title = await self.llm_integration.enhance_title(display_title, article.content, force=True)
+                    if forced_title and len(forced_title) >= 15:
+                        display_title = forced_title
+                        article.enhanced_title = forced_title
                 
-                # Stop processing if we hit both LLM limits
-                if (title_enhancements_used >= self.config.llm_max_title_enhancements and 
-                    summaries_used >= self.config.llm_max_summaries):
-                    break
-            
-            subsections_html += f"""
-            <div class="subsection">
-                <div class="subsection-header">
-                    <h3>{emoji} {trend_name}</h3>
-                    <span style="font-size: 12px; color: #666;">{len(articles)} articles</span>
+                content = article.summary or article.content
+                url = article.url
+                domain = article.domain
+                published_date = article.published_date
+                relevance_score = article.relevance_score * 100
+                semantic_score = article.semantic_relevance_score * 100 if article.semantic_relevance_score > 0 else 0
+                
+                # FIXED: Format date with timezone awareness
+                date_str = ""
+                if published_date:
+                    try:
+                        if isinstance(published_date, str):
+                            dt = datetime.datetime.fromisoformat(published_date.replace('Z', '+00:00'))
+                        else:
+                            dt = ensure_utc(published_date)
+                        if dt:
+                            date_str = dt.strftime("%Y-%m-%d")
+                    except:
+                        date_str = ""
+                
+                # Truncate content
+                if content and len(content) > 200:
+                    content = content[:197] + "..."
+                
+                # Quality badges
+                relevance_class = "high" if relevance_score >= 70 else ""
+                badges = f'<span class="badge company">COMPANY</span>'
+                badges += f'<span class="badge {relevance_class}">{relevance_score:.0f}% match</span>'
+                if semantic_score > 0:
+                    badges += f'<span class="badge llm">{semantic_score:.0f}% semantic</span>'
+                if article.enhanced_title:
+                    badges += f'<span class="badge llm">LLM Enhanced</span>'
+                
+                articles_html += f"""
+                <div class="article">
+                    <div class="article-card">
+                        <a href="{url}" class="article-title" target="_blank">{display_title}</a>
+                        {f'<div class="article-summary">{content}</div>' if content else ''}
+                        <div class="article-meta">
+                            <div class="left">{badges}</div>
+                            <div>{domain}{f' • {date_str}' if date_str else ''}</div>
+                        </div>
+                    </div>
                 </div>
+                """
+            
+            section_html += f"""
+            <div class="subsection">
+                <h3>{company_name} ({len(articles)} updates)</h3>
                 {articles_html}
             </div>
             """
         
-        # ADDED: Log LLM usage
-        if self.llm_integration.enabled:
-            logger.info(f"Email LLM usage - Titles: {title_enhancements_used}/{self.config.llm_max_title_enhancements}, "
-                       f"Summaries: {summaries_used}/{self.config.llm_max_summaries}")
-        
-        return f"""
-        <div class="section">
-            <div class="section-header">
-                <h2>📊 Trend Analysis</h2>
-            </div>
-            {subsections_html}
-        </div>
-        """
-
-# --------------------------------------------------------------------------------------
-# Main Unified System Orchestrator
-# --------------------------------------------------------------------------------------
-
-class UnifiedSystemOrchestrator:
-    """Main orchestrator for the unified fintech intelligence system"""
+        return section_html
     
-    def __init__(self, config: UnifiedConfig):
-        self.config = config
+    async def _generate_trend_section(self, trend_data: Dict[str, List[ContentSource]]) -> str:
+        """Generate trend analysis section with LLM-enhanced titles"""
+        if not any(trend_data.values()):
+            return '<div class="no-articles">No trend updates found in the last 7 days.</div>'
         
-        # Initialize components with dependency injection
-        self.region_filter = EnhancedRegionFilter()
-        self.llm_integration = EnhancedLLMIntegration(config)
-        self.database = UnifiedDatabaseManager(config)
-        self.email_generator = UnifiedEmailGenerator(config, self.llm_integration)
-        self.summarizer = ArticleSummarizer()
+        section_html = ""
         
-        # Initialize subsystems based on configuration
-        if config.companies_enabled:
-            self.company_system = CompanyMonitoringSystem(config, self.database, self.region_filter)
-        else:
-            self.company_system = None
+        for trend_key, articles in trend_data.items():
+            if not articles:
+                continue
             
-        if config.trends_enabled:
-            self.trends_system = TrendsMonitoringSystem(config, self.database, self.region_filter, self.llm_integration)
-        else:
-            self.trends_system = None
+            trend_info = self.trend_info.get(trend_key, {"name": trend_key.title(), "emoji": "📊"})
+            
+            articles_html = ""
+            for article in articles[:4]:  # Limit per trend
+                # ENHANCED: Force professional LLM title rewrite for email display
+                display_title = article.enhanced_title or article.title
+                if self.llm_integration.enabled and not article.enhanced_title:
+                    forced_title = await self.llm_integration.enhance_title(display_title, article.content, force=True)
+                    if forced_title and len(forced_title) >= 15:
+                        display_title = forced_title
+                        article.enhanced_title = forced_title
+                
+                content = article.summary or article.content
+                url = article.url
+                domain = article.domain
+                relevance_score = article.relevance_score * 100
+                semantic_score = article.semantic_relevance_score * 100 if article.semantic_relevance_score > 0 else 0
+                
+                # Truncate content
+                if content and len(content) > 150:
+                    content = content[:147] + "..."
+                
+                # Quality badges
+                relevance_class = "high" if relevance_score >= 70 else ""
+                badges = f'<span class="badge trend">TREND</span>'
+                badges += f'<span class="badge {relevance_class}">{relevance_score:.0f}% match</span>'
+                if semantic_score > 0:
+                    badges += f'<span class="badge llm">{semantic_score:.0f}% semantic</span>'
+                if article.enhanced_title:
+                    badges += f'<span class="badge llm">LLM Enhanced</span>'
+                
+                articles_html += f"""
+                <div class="article">
+                    <div class="article-card">
+                        <a href="{url}" class="article-title" target="_blank">{display_title}</a>
+                        {f'<div class="article-summary">{content}</div>' if content else ''}
+                        <div class="article-meta">
+                            <div class="left">{badges}</div>
+                            <div>{domain} • {article.source_type.upper()}</div>
+                        </div>
+                    </div>
+                </div>
+                """
+            
+            section_html += f"""
+            <div class="subsection">
+                <h3><span class="emoji">{trend_info['emoji']}</span>{trend_info['name']} ({len(articles)} articles)</h3>
+                {articles_html}
+            </div>
+            """
         
-        # Initialize stats
-        self.stats = {
-            'processing_time': 0,
-            'start_time': time.time(),
-            'company_articles': 0,
-            'trend_articles': 0,
-            'total_articles_saved': 0,
-            'email_articles': 0,
-            'semantic_scored_articles': 0,
-            'avg_semantic_relevance': 0.0
-        }
-        
-        logger.info(f"Unified system v3.0.2 initialized")
-        logger.info(f"Companies: {'ENABLED' if config.companies_enabled else 'DISABLED'}")
-        logger.info(f"Trends: {'ENABLED' if config.trends_enabled else 'DISABLED'}")
-        logger.info(f"Email limit: {config.max_email_articles} articles")
+        return section_html
 
-    async def run_unified_intelligence(self) -> Dict[str, Any]:
-        """Run the complete unified intelligence gathering process"""
+# --------------------------------------------------------------------------------------
+# Unified System Orchestrator
+# --------------------------------------------------------------------------------------
+
+class UnifiedFintechUpdateSystem:
+    """Main orchestrator for the unified fintech update system with FULL LLM INTEGRATION"""
+    
+    def __init__(self):
         try:
-            print("Starting Unified FinTech Intelligence v3.0.2...")
+            self.config = UnifiedConfig()
+            self.region_filter = EnhancedRegionFilter()
+            self.llm = EnhancedLLMIntegration(self.config)
+            self.database = UnifiedDatabaseManager(self.config)
+            
+            # Initialize article processor with LLM integration
+            self.article_processor = ArticleProcessor(self.config, self.region_filter, self.llm)
+            
+            # Initialize monitoring systems with LLM-aware processors
+            self.company_monitor = CompanyMonitoringSystem(self.config, self.region_filter, self.llm, self.article_processor)
+            self.trend_monitor = TrendMonitoringSystem(self.config, self.region_filter, self.llm, self.article_processor)
+            self.email_generator = UnifiedEmailGenerator(self.config, self.llm)
+            
+            # Initialize stats
+            self.stats = {
+                'processing_time': 0,
+                'start_time': time.time(),
+                'company_articles': 0,
+                'trend_articles': 0,
+                'total_articles_saved': 0,
+                'email_articles': 0,
+                'semantic_scored_articles': 0,
+                'llm_enhanced_titles': 0
+            }
+            
+            logger.info("Unified FinTech Update System v3.2.0 initialized")
+            logger.info(f"Companies: {'ENABLED' if self.config.companies_enabled else 'DISABLED'}")
+            logger.info(f"Trends: {'ENABLED' if self.config.trends_enabled else 'DISABLED'}")
+            logger.info(f"LLM: {'ENABLED' if self.config.llm_enabled else 'DISABLED'} • Model: {self.config.llm_model}")
+            logger.info(f"Age filter: {self.config.max_age_days} days")
+            
+        except Exception as e:
+            logger.error(f"System initialization failed: {e}")
+            raise
+    
+    def _is_duplicate(self, article: ContentSource, recent_hashes: Set[str], existing: List[ContentSource]) -> bool:
+        """Check if article is a duplicate"""
+        if article.content_hash in recent_hashes:
+            return True
+        
+        for existing_article in existing[-50:]:  # Check last 50 articles
+            if (article.content_hash == existing_article.content_hash or 
+                article.url == existing_article.url):
+                return True
+        
+        return False
+    
+    async def _is_url_accessible(self, url: str, timeout: int = 8) -> bool:
+        """Check if URL is accessible"""
+        try:
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"}
+            async with aiohttp.ClientSession() as session:
+                async with session.head(
+                    url, 
+                    headers=headers, 
+                    allow_redirects=True,
+                    timeout=aiohttp.ClientTimeout(total=timeout), 
+                    ssl=False
+                ) as resp:
+                    return 200 <= resp.status < 400
+        except:
+            return False
+
+    def _is_recent(self, dt: Optional[datetime.datetime], days: int = 7) -> bool:
+        """FIXED: Check if datetime is recent (timezone-aware)"""
+        if not dt:
+            return True
+        
+        # Ensure both dates are timezone-aware for comparison
+        dt_utc = ensure_utc(dt)
+        cutoff = utc_date_filter(days)
+        
+        return dt_utc >= cutoff
+    
+    async def run_unified_update(self) -> Dict[str, Any]:
+        """Run the complete unified update process with FULL LLM INTEGRATION"""
+        try:
+            print("🚀 Starting Unified FinTech Daily Update v3.2.0...")
+            
+            # Cleanup old data
             self.database.cleanup_old_data()
             
+            # Get recent hashes for deduplication
+            recent_hashes = self.database.get_recent_article_hashes(7)
             all_articles = []
+            semantic_scored_count = 0
             
-            # Run company monitoring if enabled
-            if self.config.companies_enabled and self.company_system:
-                print("\n🏢 Running Company Monitoring...")
-                company_articles = await self.company_system.monitor_all_companies()
-                all_articles.extend(company_articles)
-                self.stats['company_articles'] = len(company_articles)
-                print(f"   Collected {len(company_articles)} company articles")
-            else:
-                self.stats['company_articles'] = 0
-                print("🏢 Company monitoring disabled")
+            # Company monitoring
+            company_articles = []
+            if self.config.companies_enabled:
+                print("\n📈 Running Company Monitoring with FULL LLM Integration...")
+                try:
+                    company_articles = await self.company_monitor.monitor_companies()
+                    self.stats['company_articles'] = len(company_articles)
+                    print(f"   Collected {len(company_articles)} company articles")
+                    
+                    # Count LLM enhancements
+                    enhanced_count = sum(1 for article in company_articles if article.enhanced_title)
+                    self.stats['llm_enhanced_titles'] += enhanced_count
+                    print(f"   LLM Enhanced: {enhanced_count} titles")
+                    
+                except Exception as e:
+                    print(f"   Company monitoring error: {e}")
             
-            # Run trends monitoring if enabled
-            if self.config.trends_enabled and self.trends_system:
-                print("\n📊 Running Trends Monitoring...")
-                trend_articles = await self.trends_system.monitor_all_trends()
-                all_articles.extend(trend_articles)
-                self.stats['trend_articles'] = len(trend_articles)
-                print(f"   Collected {len(trend_articles)} trend articles")
-            else:
-                self.stats['trend_articles'] = 0
-                print("📊 Trends monitoring disabled")
+            # Trend monitoring
+            trend_articles = []
+            if self.config.trends_enabled:
+                print("\n🔍 Running Trend Monitoring with FULL LLM Integration...")
+                try:
+                    trend_articles = await self.trend_monitor.monitor_trends()
+                    self.stats['trend_articles'] = len(trend_articles)
+                    print(f"   Collected {len(trend_articles)} trend articles")
+                    
+                    # Count LLM enhancements
+                    enhanced_count = sum(1 for article in trend_articles if article.enhanced_title)
+                    self.stats['llm_enhanced_titles'] += enhanced_count
+                    print(f"   LLM Enhanced: {enhanced_count} titles")
+                    
+                except Exception as e:
+                    print(f"   Trend monitoring error: {e}")
             
-            self.stats['total_articles_saved'] = len(all_articles)
+            # Combine and process articles
+            all_articles = company_articles + trend_articles
             
-            # Get recent articles for email
-            recent_articles = self.database.get_recent_articles_for_email(
-                hours=self.config.company_hours_window,
-                max_age_days=self.config.company_max_age_days
-            )
+            # Semantic scoring for top articles (respecting TOTAL limit)
+            if (self.llm.semantic_scoring_enabled and all_articles):
+                print(f"\n🧠 Running Semantic Scoring (limit: {self.config.semantic_total_limit})...")
+                
+                # Sort all articles by relevance and take top ones for semantic scoring
+                sorted_for_semantic = sorted(all_articles, key=lambda a: a.relevance_score, reverse=True)
+                articles_to_score = sorted_for_semantic[:self.config.semantic_total_limit]
+                
+                for article in articles_to_score:
+                    try:
+                        if article.source_type == 'trend':
+                            # Get trend config for keywords
+                            trend_config = TRENDS.get(article.category)
+                            if trend_config:
+                                semantic_score = await self.llm.evaluate_semantic_relevance(
+                                    article.title, article.content, trend_config.keywords
+                                )
+                                if semantic_score > 0:
+                                    article.semantic_relevance_score = semantic_score
+                                    semantic_scored_count += 1
+                                    
+                                    # Update quality score with semantic component
+                                    combined = article.relevance_score * 0.6 + semantic_score * 0.4
+                                    article.quality_score = (combined + article.region_confidence) / 2
+                        
+                        # Stop if we've hit the total limit
+                        if semantic_scored_count >= self.config.semantic_total_limit:
+                            break
+                            
+                    except Exception as e:
+                        logger.debug(f"Semantic scoring failed for article: {e}")
+                        continue
+                
+                self.stats['semantic_scored_articles'] = semantic_scored_count
+                print(f"   Semantic scored: {semantic_scored_count} articles")
+            
+            # Save articles and filter for email
+            saved_articles = []
+            email_company_data = {company.key: [] for company in COMPANIES}
+            email_trend_data = {trend_key: [] for trend_key in TRENDS.keys()}
+            
+            print(f"\n💾 Processing {len(all_articles)} total articles...")
+            
+            for article in all_articles:
+                # Skip duplicates
+                if self._is_duplicate(article, recent_hashes, saved_articles):
+                    continue
+                
+                # Save to database
+                if self.database.save_article(article):
+                    saved_articles.append(article)
+                    self.stats['total_articles_saved'] += 1
+                    
+                    # Check if article should be included in email
+                    if (article.quality_score >= self.config.relevance_threshold and
+                        self._is_recent(article.published_date, days=self.config.max_age_days)):
+                        
+                        if article.source_type == 'company':
+                            email_company_data[article.category].append(article)
+                        elif article.source_type == 'trend':
+                            email_trend_data[article.category].append(article)
+            
+            # Sort articles by quality for email
+            for company_key in email_company_data:
+                email_company_data[company_key].sort(key=lambda x: x.quality_score, reverse=True)
+                email_company_data[company_key] = email_company_data[company_key][:5]  # Limit per company
+            
+            for trend_key in email_trend_data:
+                email_trend_data[trend_key].sort(key=lambda x: x.quality_score, reverse=True)
+                email_trend_data[trend_key] = email_trend_data[trend_key][:4]  # Limit per trend
+            
+            # Apply global email limit
+            all_email_articles = []
+            for articles in list(email_company_data.values()) + list(email_trend_data.values()):
+                all_email_articles.extend(articles)
+            
+            all_email_articles.sort(key=lambda x: x.quality_score, reverse=True)
+            limited_email_articles = all_email_articles[:self.config.max_email_articles]
+            
+            # Redistribute limited articles back
+            final_company_data = {company.key: [] for company in COMPANIES}
+            final_trend_data = {trend_key: [] for trend_key in TRENDS.keys()}
+            
+            for article in limited_email_articles:
+                if article.source_type == 'company':
+                    final_company_data[article.category].append(article)
+                elif article.source_type == 'trend':
+                    final_trend_data[article.category].append(article)
+            
+            # Check accessibility for email articles
+            if limited_email_articles:
+                print(f"\n🔗 Checking accessibility of {len(limited_email_articles)} email articles...")
+                accessibility_checks = await asyncio.gather(
+                    *[self._is_url_accessible(a.url) for a in limited_email_articles], 
+                    return_exceptions=True
+                )
+                accessible_articles = []
+                for article, is_accessible in zip(limited_email_articles, accessibility_checks):
+                    if is_accessible is True:
+                        accessible_articles.append(article)
+                    else:
+                        logger.debug(f"Excluding inaccessible URL: {article.url}")
+                
+                # Update final data with only accessible articles
+                final_company_data = {company.key: [] for company in COMPANIES}
+                final_trend_data = {trend_key: [] for trend_key in TRENDS.keys()}
+                
+                for article in accessible_articles:
+                    if article.source_type == 'company':
+                        final_company_data[article.category].append(article)
+                    elif article.source_type == 'trend':
+                        final_trend_data[article.category].append(article)
+                
+                self.stats['email_articles'] = len(accessible_articles)
             
             # Calculate final stats
             self.stats['processing_time'] = time.time() - self.stats['start_time']
-            total_email_articles = len(recent_articles.get('company_articles', [])) + len(recent_articles.get('trend_articles', []))
-            self.stats['email_articles'] = min(total_email_articles, self.config.max_email_articles)
-            
-            # Calculate semantic scoring stats
-            semantic_articles = []
-            for articles in recent_articles.values():
-                semantic_articles.extend([a for a in articles if a.get('semantic_relevance_score', 0) > 0])
-            self.stats['semantic_scored_articles'] = len(semantic_articles)
-            
-            if semantic_articles:
-                self.stats['avg_semantic_relevance'] = sum(a.get('semantic_relevance_score', 0) for a in semantic_articles) / len(semantic_articles)
             
             # Save daily stats
             enhanced_stats = {
                 **self.stats,
-                'total_articles': self.stats['total_articles_saved'],
-                'google_articles': sum(1 for a in all_articles if a.get('source_type') == 'trend_google'),
-                'rss_articles': sum(1 for a in all_articles if a.get('source_type') == 'trend_rss'),
-                'avg_relevance': sum(a.get('relevance_score', 0) for a in all_articles) / len(all_articles) if all_articles else 0.0
+                'total_articles': len(all_articles),
+                'google_articles': sum(1 for a in all_articles if a.source_type == 'trend' and 'google' in getattr(a, 'search_keywords', [])),
+                'rss_articles': sum(1 for a in all_articles if 'rss' in getattr(a, 'domain', '')),
+                'avg_relevance': sum(a.relevance_score for a in all_articles) / len(all_articles) if all_articles else 0,
+                'avg_semantic_relevance': sum(a.semantic_relevance_score for a in all_articles if a.semantic_relevance_score > 0) / max(1, semantic_scored_count) if semantic_scored_count > 0 else 0
             }
-            self.database.save_daily_stats(enhanced_stats)
             
-            # Generate and send email
+            self.database.save_daily_stats(enhanced_stats)
+            database_stats = self.database.get_database_stats()
+            
+            # Generate and send email with FULL LLM ENHANCEMENT
             email_sent = False
-            if (self.config.email_recipients and 
-                (recent_articles['company_articles'] or recent_articles['trend_articles'])):
-                logger.debug(f"Email gating — recipients: {len(self.config.email_recipients)}, company: {len(recent_articles['company_articles'])}, trend: {len(recent_articles['trend_articles'])}")
+            if self.config.email_recipients and self.stats['email_articles'] > 0:
                 try:
-                    print("\n📧 Generating unified email...")
-                    database_stats = self.database.get_database_stats()
-                    html_content = await self.email_generator.generate_email(
-                        recent_articles, self.stats, database_stats
+                    print("\n📧 Generating unified email with LLM enhancements...")
+                    html_content = await self.email_generator.generate_unified_email(
+                        final_company_data, final_trend_data, enhanced_stats, database_stats
                     )
                     email_sent = self._send_email(html_content)
                     if email_sent:
-                        print("✅ Email sent successfully!")
+                        print("   ✅ Email sent successfully!")
                     else:
-                        print("❌ Email not sent")
+                        print("   ❌ Email not sent")
                 except Exception as e:
-                    print(f"❌ Email error: {e}")
-                    email_sent = False
+                    print(f"   ❌ Email error: {e}")
             else:
-                print("📧 No email recipients configured or no articles for email")
+                print("\n📧 No email recipients configured or no articles found")
             
-            # Console summary
-            print(f"\n📊 UNIFIED SYSTEM SUMMARY:")
+            # Summary
+            print(f"\n📊 UNIFIED UPDATE SUMMARY:")
+            print(f"   Company articles: {self.stats['company_articles']}")
+            print(f"   Trend articles: {self.stats['trend_articles']}")
             print(f"   Total articles saved: {self.stats['total_articles_saved']}")
-            if self.config.companies_enabled:
-                print(f"   Company articles: {self.stats['company_articles']}")
-            if self.config.trends_enabled:
-                print(f"   Trend articles: {self.stats['trend_articles']}")
-            print(f"   Email articles: {self.stats['email_articles']} (limit: {self.config.max_email_articles})")
-            if self.llm_integration.enabled:
-                llm_stats = self.llm_integration.get_usage_stats()
+            print(f"   Email articles: {self.stats['email_articles']}")
+            if self.llm.enabled:
+                llm_stats = self.llm.get_usage_stats()
                 print(f"   LLM usage: {llm_stats['daily_requests']} calls, {llm_stats['daily_tokens']} tokens, ${llm_stats['daily_cost']:.4f}")
-            if self.llm_integration.semantic_scoring_enabled:
-                print(f"   Semantic scored: {self.stats['semantic_scored_articles']}")
-                print(f"   Avg semantic score: {self.stats['avg_semantic_relevance']:.2f}")
+                print(f"   LLM enhanced titles: {self.stats['llm_enhanced_titles']}")
+            if semantic_scored_count > 0:
+                print(f"   Semantic scored: {semantic_scored_count}/{self.config.semantic_total_limit}")
             print(f"   Processing time: {self.stats['processing_time']:.1f}s")
             print(f"   Email sent: {'YES' if email_sent else 'NO'}")
             
             return {
                 'success': True,
-                'total_articles_saved': self.stats['total_articles_saved'],
                 'company_articles': self.stats['company_articles'],
                 'trend_articles': self.stats['trend_articles'],
+                'total_articles_saved': self.stats['total_articles_saved'],
                 'email_articles': self.stats['email_articles'],
-                'semantic_scored_articles': self.stats['semantic_scored_articles'],
+                'semantic_scored_articles': semantic_scored_count,
+                'llm_enhanced_titles': self.stats['llm_enhanced_titles'],
                 'email_sent': email_sent,
-                'processing_time': self.stats['processing_time'],
-                'llm_enabled': self.llm_integration.enabled,
-                'companies_enabled': self.config.companies_enabled,
-                'trends_enabled': self.config.trends_enabled
+                'processing_time': self.stats['processing_time']
             }
+            
         except Exception as e:
-            print(f"❌ Unified system failed: {e}")
-            logger.error(f"Unified system failed: {e}")
+            print(f"❌ Unified update failed: {e}")
+            logger.error(f"Unified update failed: {e}")
             return {'success': False, 'error': str(e)}
     
     def _send_email(self, html_content: str) -> bool:
-        """Send unified email digest"""
+        """Send unified email"""
         try:
-            if not self.config.smtp_user or not self.config.smtp_password or not self.config.email_recipients:
-                print("⚠️ Email configuration incomplete")
+            if not self.config.smtp_user or not self.config.smtp_password:
                 return False
             
             msg = MIMEMultipart('alternative')
-            msg['Subject'] = f"Unified FinTech Intelligence - {datetime.date.today().strftime('%B %d, %Y')}"
-            msg['From'] = f"Unified FinTech Intelligence <{self.config.smtp_user}>"
+            msg['Subject'] = f"FinTech Daily Update v3.2.0 - {datetime.date.today().strftime('%B %d, %Y')}"
+            msg['From'] = f"FinTech Daily Update <{self.config.smtp_user}>"
             msg['To'] = ', '.join(self.config.email_recipients)
             msg.attach(MIMEText(html_content, 'html', 'utf-8'))
             
             context = ssl.create_default_context()
-            if self.config.smtp_port == 465:
-                with smtplib.SMTP_SSL(self.config.smtp_host, self.config.smtp_port, context=context) as server:
-                    server.login(self.config.smtp_user, self.config.smtp_password)
-                    server.send_message(msg)
-            else:
-                with smtplib.SMTP(self.config.smtp_host, self.config.smtp_port) as server:
-                    server.starttls(context=context)
-                    server.login(self.config.smtp_user, self.config.smtp_password)
-                    server.send_message(msg)
+            with smtplib.SMTP(self.config.smtp_host, self.config.smtp_port) as server:
+                server.starttls(context=context)
+                server.login(self.config.smtp_user, self.config.smtp_password)
+                server.send_message(msg)
+            
             return True
         except Exception as e:
-            print(f"❌ Email sending failed: {e}")
             logger.error(f"Email sending failed: {e}")
             return False
-
-# --------------------------------------------------------------------------------------
-# Main System Class (Backward Compatibility)
-# --------------------------------------------------------------------------------------
-
-class UnifiedFintechIntelligenceSystem(UnifiedSystemOrchestrator):
-    """Main system class for backward compatibility"""
-    
-    def __init__(self):
-        try:
-            config = UnifiedConfig()  # This will validate configuration
-            super().__init__(config)
-            
-            print(f"Unified FinTech Intelligence System v3.0.2 initialized")
-            print(f"Companies: {'ENABLED' if config.companies_enabled else 'DISABLED'}")
-            print(f"Trends: {'ENABLED' if config.trends_enabled else 'DISABLED'}")
-            print(f"LLM: {'ENABLED' if config.llm_enabled else 'DISABLED'} • Model: {config.llm_model}")
-            print(f"Email limit: {config.max_email_articles} articles")
-        except Exception as e:
-            logger.error(f"System initialization failed: {e}")
-            raise
 
 # --------------------------------------------------------------------------------------
 # Main Function
 # --------------------------------------------------------------------------------------
 
 async def main():
-    """Enhanced main function with comprehensive options"""
-    parser = argparse.ArgumentParser(description="Unified FinTech Intelligence System v3.0.2")
-    
-    parser.add_argument("--diagnose-links", action="store_true", help="Check company link reachability and exit")
+    """Main function with comprehensive command line options"""
+    parser = argparse.ArgumentParser(description="Unified FinTech Daily Update System v3.2.0")
     parser.add_argument("--test", action="store_true", help="Test mode - validate configuration only")
-    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
-    parser.add_argument("--config-check", action="store_true", help="Check configuration and exit")
     parser.add_argument("--companies-only", action="store_true", help="Run company monitoring only")
-    parser.add_argument("--trends-only", action="store_true", help="Run trends monitoring only")
-    parser.add_argument("--disable-llm", action="store_true", help="Disable LLM integration for this run")
-    parser.add_argument("--disable-semantic", action="store_true", help="Disable semantic scoring for this run")
-    parser.add_argument("--config-json", type=str, default=None, help="Path to trend config JSON")
+    parser.add_argument("--trends-only", action="store_true", help="Run trend monitoring only")
+    parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose logging")
+    parser.add_argument("--disable-llm", action="store_true", help="Disable LLM integration")
+    parser.add_argument("--disable-semantic", action="store_true", help="Disable semantic scoring")
+    parser.add_argument("--config-check", action="store_true", help="Check configuration and exit")
     
     args = parser.parse_args()
-
+    
     if args.verbose:
         logging.getLogger().setLevel(logging.DEBUG)
-
-    # Create a temporary config for CLI argument processing
-    temp_env = dict(os.environ)
     
-    if args.companies_only:
-        temp_env['COMPANIES_ENABLED'] = '1'
-        temp_env['TRENDS_ENABLED'] = '0'
-        print("🏢 Running in companies-only mode")
-    
-    if args.trends_only:
-        temp_env['COMPANIES_ENABLED'] = '0'
-        temp_env['TRENDS_ENABLED'] = '1'
-        print("📊 Running in trends-only mode")
-    
-    if args.config_json:
-        temp_env['TREND_CONFIG_JSON'] = args.config_json
-    
+    # Apply CLI overrides
     if args.disable_llm:
-        temp_env['LLM_INTEGRATION_ENABLED'] = '0'
-        temp_env['SEMANTIC_SCORING_ENABLED'] = '0'
+        os.environ['LLM_INTEGRATION_ENABLED'] = '0'
+        os.environ['SEMANTIC_SCORING_ENABLED'] = '0'
         print("🔇 LLM integration disabled via CLI")
     
     if args.disable_semantic:
-        temp_env['SEMANTIC_SCORING_ENABLED'] = '0'
+        os.environ['SEMANTIC_SCORING_ENABLED'] = '0'
         print("🔇 Semantic scoring disabled via CLI")
-
-    # Apply temporary environment changes
-    original_env = {}
-    for key, value in temp_env.items():
-        if key in os.environ:
-            original_env[key] = os.environ[key]
-        os.environ[key] = value
-
+    
+    if args.companies_only:
+        os.environ['TRENDS_ENABLED'] = '0'
+        print("📈 Companies only mode")
+    
+    if args.trends_only:
+        os.environ['COMPANIES_ENABLED'] = '0'
+        print("🔍 Trends only mode")
+    
     try:
         if args.config_check:
             try:
                 config = UnifiedConfig()
                 print("🔧 CONFIGURATION CHECK:")
-                print(f"   Companies enabled: {'YES' if config.companies_enabled else 'NO'}")
-                print(f"   Trends enabled: {'YES' if config.trends_enabled else 'NO'}")
-                print(f"   LLM integration: {'YES' if config.llm_enabled else 'NO'}")
-                print(f"   Semantic scoring: {'YES' if config.semantic_scoring_enabled else 'NO'} (limit: {config.semantic_total_limit})")
+                print(f"   Companies: {'ENABLED' if config.companies_enabled else 'DISABLED'}")
+                print(f"   Trends: {'ENABLED' if config.trends_enabled else 'DISABLED'}")
+                print(f"   LLM: {'ENABLED' if config.llm_enabled else 'DISABLED'} • Model: {config.llm_model}")
+                print(f"   Semantic scoring: {'ENABLED' if config.semantic_scoring_enabled else 'DISABLED'} (limit: {config.semantic_total_limit})")
                 print(f"   Email limit: {config.max_email_articles} articles")
+                print(f"   Age filter: {config.max_age_days} days")
+                print(f"   Database path: {config.database_path}")
                 print(f"   Email recipients: {len(config.email_recipients)} configured")
+                if config.trends_enabled:
+                    print(f"   Google Search API: {'CONFIGURED' if config.google_api_key else 'NOT CONFIGURED'}")
                 try:
                     db = UnifiedDatabaseManager(config)
                     stats = db.get_database_stats()
@@ -3233,80 +3152,48 @@ async def main():
             except ConfigurationError as e:
                 print(f"❌ Configuration Error:\n{e}")
                 return 1
-
-        if args.diagnose_links:
+        
+        if args.test:
+            print("🧪 RUNNING TEST MODE...")
             try:
                 config = UnifiedConfig()
-                if config.companies_enabled:
-                    company_system = CompanyMonitoringSystem(config, None, None)
-                    print("🔗 DIAGNOSING COMPANY LINKS...")
-                    report = company_system.diagnose_company_links()
-                    for entry in report:
-                        company = entry['company']
-                        url = entry['url']
-                        head = entry.get('head', 'N/A')
-                        get = entry.get('get', 'N/A')
-                        error = entry.get('error', '')
-                        print(f"{company:15} HEAD:{str(head):>3} GET:{str(get):>3} {url}")
-                        if error:
-                            print(f"                ERROR: {error}")
-                else:
-                    print("❌ Company monitoring disabled - cannot diagnose links")
+                print("   ✅ Configuration validated")
+                
+                # Test database
+                db = UnifiedDatabaseManager(config)
+                print("   ✅ Database connection tested")
+                
+                # Test LLM (if enabled)
+                if config.llm_enabled:
+                    llm = EnhancedLLMIntegration(config)
+                    print(f"   ✅ LLM integration ready ({config.llm_model})")
+                
+                print("   ✅ All systems ready for production")
                 return 0
             except Exception as e:
-                print(f"❌ Link diagnosis failed: {e}")
+                print(f"   ❌ Test failed: {e}")
                 return 1
-
-        try:
-            intelligence_system = UnifiedFintechIntelligenceSystem()
-
-            if args.test:
-                print("🧪 RUNNING TEST MODE...")
-                print("   Configuration validated ✅")
-                print("   Database connection tested ✅")
-                print("   All subsystems ready for production ✅")
-                return 0
-
-            # Run unified intelligence system
-            try:
-                print("🚀 Starting Unified FinTech Intelligence v3.0.2...")
-                result = await intelligence_system.run_unified_intelligence()
-                if result['success']:
-                    print("\n✅ UNIFIED SYSTEM COMPLETED SUCCESSFULLY!")
-                    print(f"📧 Email sent: {'YES' if result.get('email_sent') else 'NO'}")
-                    print(f"📄 Total articles saved: {result.get('total_articles_saved', 0)}")
-                    if result.get('companies_enabled'):
-                        print(f"🏢 Company articles: {result.get('company_articles', 0)}")
-                    if result.get('trends_enabled'):
-                        print(f"📊 Trend articles: {result.get('trend_articles', 0)}")
-                    print(f"📧 Email articles: {result.get('email_articles', 0)}")
-                    if result.get('semantic_scored_articles') is not None:
-                        print(f"🧠 Semantic scored: {result.get('semantic_scored_articles', 0)}")
-                    return 0
-                else:
-                    print(f"\n❌ UNIFIED SYSTEM FAILED: {result.get('error', 'Unknown error')}")
-                    return 1
-            except KeyboardInterrupt:
-                print("\n⚠️ Process interrupted by user (Ctrl+C)")
-                print("💾 Partial data may have been saved to database")
-                return 130
-
-        except ConfigurationError as e:
-            print(f"❌ Configuration Error: {e}")
+        
+        # Run unified update
+        system = UnifiedFintechUpdateSystem()
+        result = await system.run_unified_update()
+        
+        if result['success']:
+            print("\n✅ UNIFIED UPDATE COMPLETED SUCCESSFULLY!")
+            print(f"📧 Email sent: {'YES' if result.get('email_sent') else 'NO'}")
+            print(f"🧠 LLM enhanced titles: {result.get('llm_enhanced_titles', 0)}")
+            return 0
+        else:
+            print(f"\n❌ UNIFIED UPDATE FAILED: {result.get('error', 'Unknown error')}")
             return 1
-        except Exception as e:
-            print(f"❌ System error: {e}")
-            logger.error(f"System error: {e}")
-            return 1
-
-    finally:
-        # Restore original environment
-        for key, value in original_env.items():
-            os.environ[key] = value
-        for key in temp_env:
-            if key not in original_env and key in os.environ:
-                del os.environ[key]
-
+    
+    except KeyboardInterrupt:
+        print("\n⚠️ Process interrupted by user")
+        return 130
+    except Exception as e:
+        print(f"❌ System error: {e}")
+        logger.error(f"System error: {e}")
+        return 1
 
 if __name__ == "__main__":
     try:
@@ -3314,3 +3201,7 @@ if __name__ == "__main__":
     except KeyboardInterrupt:
         print("\n⚠️ Interrupted")
         sys.exit(130)
+    except Exception as e:
+        print(f"❌ Fatal error: {e}")
+        logger.error(f"Fatal error: {e}")
+        sys.exit(1)
