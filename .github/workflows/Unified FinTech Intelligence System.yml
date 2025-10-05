@@ -165,18 +165,18 @@ jobs:
             echo ""
             echo "=== EMAIL ANALYSIS ==="
             if grep -q "Email sent successfully" unified_fintech_update.log; then
-              echo "✅ EMAIL STATUS: SUCCESS - Email was sent"
+              echo "EMAIL STATUS: SUCCESS - Email was sent"
               echo "Email send confirmations: $(grep -c "Email sent successfully" unified_fintech_update.log)"
             elif grep -q "Email not sent" unified_fintech_update.log; then
-              echo "❌ EMAIL STATUS: FAILED - Email not sent"
+              echo "EMAIL STATUS: FAILED - Email not sent"
               echo "Email failure reasons:"
               grep -A 2 -B 2 "Email not sent\|Email error\|Email sending failed" unified_fintech_update.log || echo "No specific error found"
             elif grep -q "No email recipients configured" unified_fintech_update.log; then
-              echo "❌ EMAIL STATUS: NO RECIPIENTS - Email system disabled"
+              echo "EMAIL STATUS: NO RECIPIENTS - Email system disabled"
             elif grep -q "no articles found" unified_fintech_update.log; then
-              echo "⚠️ EMAIL STATUS: NO CONTENT - No articles to email"
+              echo "EMAIL STATUS: NO CONTENT - No articles to email"
             else
-              echo "❓ EMAIL STATUS: UNKNOWN - Check logs for email mentions"
+              echo "EMAIL STATUS: UNKNOWN - Check logs for email mentions"
               echo "Email-related log entries:"
               grep -i "email\|smtp\|send" unified_fintech_update.log | head -10 || echo "No email-related entries found"
             fi
@@ -203,12 +203,12 @@ jobs:
             
             # Check system completion
             if grep -q "ENHANCED UNIFIED UPDATE COMPLETED SUCCESSFULLY" unified_fintech_update.log; then
-              echo "✅ SYSTEM STATUS: SUCCESS"
+              echo "SYSTEM STATUS: SUCCESS"
             else
-              echo "❌ SYSTEM STATUS: INCOMPLETE OR FAILED"
+              echo "SYSTEM STATUS: INCOMPLETE OR FAILED"
             fi
           else
-            echo "❌ WARNING: Log file not created - execution may have failed"
+            echo "WARNING: Log file not created - execution may have failed"
           fi
           
           # Database analysis
@@ -223,7 +223,7 @@ jobs:
               echo "Trend articles: $(sqlite3 unified_fintech_update.db "SELECT COUNT(*) FROM articles WHERE source_type='trend';" 2>/dev/null || echo 'N/A')"
             fi
           else
-            echo "❌ WARNING: Database not found"
+            echo "WARNING: Database not found"
           fi
           
       - name: Upload database artifact
@@ -256,12 +256,12 @@ jobs:
           # Determine overall result
           if [ -f unified_fintech_update.log ] && grep -q "ENHANCED UNIFIED UPDATE COMPLETED SUCCESSFULLY" unified_fintech_update.log; then
             if grep -q "Email sent successfully" unified_fintech_update.log; then
-              echo "🎉 RESULT: COMPLETE SUCCESS - System ran and email sent"
+              echo "RESULT: COMPLETE SUCCESS - System ran and email sent"
             else
-              echo "⚠️ RESULT: PARTIAL SUCCESS - System ran but no email sent"
+              echo "RESULT: PARTIAL SUCCESS - System ran but no email sent"
             fi
           else
-            echo "❌ RESULT: EXECUTION FAILED - Check logs and configuration"
+            echo "RESULT: EXECUTION FAILED - Check logs and configuration"
           fi
  | wc -l)"
           echo "Email configuration: VALID"
