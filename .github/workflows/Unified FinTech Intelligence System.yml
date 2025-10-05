@@ -13,6 +13,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
         
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -57,7 +59,8 @@ jobs:
             exit 1
           fi
           
-          echo "Email recipients count: $(echo '${{ secrets.EMAIL_RECIPIENTS }}' | tr ',' '\n' | grep -v '^$' | wc -l)"
+          echo "Email recipients count: $(echo '${{ secrets.EMAIL_RECIPIENTS }}' | tr ',' '\n' | grep -v '^
+ | wc -l)"
           echo "Email configuration: VALID"
           
       - name: Run Unified FinTech Intelligence
@@ -141,6 +144,15 @@ jobs:
           
           echo ""
           echo "=== EXECUTION COMPLETED AT $(date) ==="
+          
+      - name: Commit database to repository
+        if: success()
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add unified_fintech_update.db
+          git diff --staged --quiet || git commit -m "Update database - $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git push
           
       - name: Analyze execution results
         if: always()
