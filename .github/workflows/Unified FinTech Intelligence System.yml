@@ -60,6 +60,209 @@ jobs:
           fi
           
           echo "Email recipients count: $(echo '${{ secrets.EMAIL_RECIPIENTS }}' | tr ',' '\n' | grep -v '^
+          
+      - name: Run Unified FinTech Intelligence
+        env:
+          # Core system settings - FIXED to match Python code expectations
+          COMPANIES_ENABLED: ${{ vars.COMPANIES_ENABLED || '1' }}
+          TRENDS_ENABLED: ${{ vars.TRENDS_ENABLED || '1' }}
+          LLM_INTEGRATION_ENABLED: ${{ vars.LLM_INTEGRATION_ENABLED || '1' }}
+          SEMANTIC_SCORING_ENABLED: ${{ vars.SEMANTIC_SCORING_ENABLED || '1' }}
+          KEYWORD_EXPANSION_ENABLED: ${{ vars.KEYWORD_EXPANSION_ENABLED || '1' }}
+          STRICT_REGION_FILTER: ${{ vars.STRICT_REGION_FILTER || '1' }}
+          
+          # API Keys
+          GOOGLE_SEARCH_API_KEY: ${{ secrets.GOOGLE_SEARCH_API_KEY }}
+          GOOGLE_SEARCH_ENGINE_ID: ${{ secrets.GOOGLE_SEARCH_ENGINE_ID }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          
+          # Email configuration - CRITICAL for email generation
+          SMTP_HOST: ${{ vars.SMTP_HOST || 'smtp.gmail.com' }}
+          SMTP_PORT: ${{ vars.SMTP_PORT || '587' }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_RECIPIENTS: ${{ secrets.EMAIL_RECIPIENTS }}
+          
+          # LLM Settings
+          LLM_MODEL: ${{ vars.LLM_MODEL || 'gpt-4o-mini' }}
+          LLM_TEMPERATURE: ${{ vars.LLM_TEMPERATURE || '0.1' }}
+          LLM_MAX_TOKENS_TITLE: ${{ vars.LLM_MAX_TOKENS_TITLE || '32' }}
+          LLM_MAX_TOKENS_SUMMARY: ${{ vars.LLM_MAX_TOKENS_SUMMARY || '120' }}
+          LLM_SUMMARY_FALLBACK_ENABLED: ${{ vars.LLM_SUMMARY_FALLBACK_ENABLED || '1' }}
+          LLM_SUMMARY_MIN_CHARS_TRIGGER: ${{ vars.LLM_SUMMARY_MIN_CHARS_TRIGGER || '60' }}
+          LLM_SUMMARY_LONG_CONTENT_TRIGGER: ${{ vars.LLM_SUMMARY_LONG_CONTENT_TRIGGER || '3000' }}
+          
+          # Article limits and thresholds - FIXED variable names
+          RELEVANCE_THRESHOLD: ${{ vars.RELEVANCE_THRESHOLD || '0.55' }}
+          COMPANY_RELEVANCE_THRESHOLD: ${{ vars.COMPANY_RELEVANCE_THRESHOLD || '0.3' }}
+          MAX_EMAIL_ARTICLES: ${{ vars.MAX_EMAIL_ARTICLES || '40' }}
+          MAX_AGE_DAYS: ${{ vars.MAX_AGE_DAYS || '14' }}
+          SEMANTIC_TOTAL_LIMIT: ${{ vars.SEMANTIC_TOTAL_LIMIT || '60' }}
+          
+          # Company settings
+          COMPANY_MAX_ITEMS_PER_SOURCE: ${{ vars.COMPANY_MAX_ITEMS_PER_SOURCE || '30' }}
+          COMPANY_EMAIL_LIMIT_PER_COMPANY: ${{ vars.COMPANY_EMAIL_LIMIT_PER_COMPANY || '3' }}
+          BYPASS_ROBOTS_TXT: ${{ vars.BYPASS_ROBOTS_TXT || '1' }}
+          AGGRESSIVE_SCRAPING: ${{ vars.AGGRESSIVE_SCRAPING || '1' }}
+          
+          # Google Search
+          GOOGLE_SEARCH_DAILY_LIMIT: ${{ vars.GOOGLE_SEARCH_DAILY_LIMIT || '100' }}
+          
+          # Database settings - FIXED path
+          DATABASE_PATH: unified_fintech_update.db
+          KEEP_HISTORICAL_DAYS: ${{ vars.KEEP_HISTORICAL_DAYS || '365' }}
+          USE_CONNECTION_POOL: ${{ vars.USE_CONNECTION_POOL || '1' }}
+          
+          # Debug settings
+          LOG_LEVEL: ${{ vars.LOG_LEVEL || 'INFO' }}
+          DEBUG_MODE: ${{ vars.DEBUG_MODE || '0' }}
+          TZ: America/New_York
+          
+        run: |
+          set -o pipefail
+          echo "Starting Unified FinTech Intelligence at $(date)"
+          echo ""
+          echo "=== SYSTEM CONFIGURATION ==="
+          echo "Companies: ${COMPANIES_ENABLED} | Trends: ${TRENDS_ENABLED} | LLM: ${LLM_INTEGRATION_ENABLED}"
+          echo "Semantic scoring: ${SEMANTIC_SCORING_ENABLED} | Keyword expansion: ${KEYWORD_EXPANSION_ENABLED}"
+          echo "Email limit: ${MAX_EMAIL_ARTICLES} articles | Age filter: ${MAX_AGE_DAYS} days"
+          echo "LLM model: ${LLM_MODEL} | Google limit: ${GOOGLE_SEARCH_DAILY_LIMIT} queries"
+          echo "Database: ${DATABASE_PATH}"
+          echo ""
+          echo "=== EMAIL CONFIGURATION ==="
+          echo "SMTP Host: ${SMTP_HOST}:${SMTP_PORT}"
+          echo "SMTP User: ${SMTP_USER:+CONFIGURED}"
+          echo "SMTP Password: ${SMTP_PASSWORD:+CONFIGURED}"
+          echo "Recipients: $(echo "${EMAIL_RECIPIENTS}" | tr ',' '\n' | wc -l) configured"
+          echo ""
+          
+          # Run the system with verbose output
+          echo "=== STARTING FINTECH INTELLIGENCE SYSTEM ==="
+          python Unified_FinTech_Intelligence.py --verbose 2>&1 | tee unified_fintech_update.log
+          
+          echo ""
+          echo "=== EXECUTION COMPLETED AT $(date) ==="
+          
+      - name: Commit database to repository
+        if: success()
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git add unified_fintech_update.db
+          git diff --staged --quiet || git commit -m "Update database - $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git push
+          
+      - name: Analyze execution results
+        if: always()
+        run: |
+          echo "=== POST-EXECUTION ANALYSIS ==="
+          
+          # Check for success indicators
+          if [ -f unified_fintech_update.log ]; then
+            echo "Log file created: $(du -h unified_fintech_update.log)"
+            
+            # Check for email-related messages
+            echo ""
+            echo "=== EMAIL ANALYSIS ==="
+            if grep -q "Email sent successfully" unified_fintech_update.log; then
+              echo "✅ EMAIL STATUS: SUCCESS - Email was sent"
+              echo "Email send confirmations: $(grep -c "Email sent successfully" unified_fintech_update.log)"
+            elif grep -q "Email not sent" unified_fintech_update.log; then
+              echo "❌ EMAIL STATUS: FAILED - Email not sent"
+              echo "Email failure reasons:"
+              grep -A 2 -B 2 "Email not sent\|Email error\|Email sending failed" unified_fintech_update.log || echo "No specific error found"
+            elif grep -q "No email recipients configured" unified_fintech_update.log; then
+              echo "❌ EMAIL STATUS: NO RECIPIENTS - Email system disabled"
+            elif grep -q "no articles found" unified_fintech_update.log; then
+              echo "⚠️ EMAIL STATUS: NO CONTENT - No articles to email"
+            else
+              echo "❓ EMAIL STATUS: UNKNOWN - Check logs for email mentions"
+              echo "Email-related log entries:"
+              grep -i "email\|smtp\|send" unified_fintech_update.log | head -10 || echo "No email-related entries found"
+            fi
+            
+            # Check article counts
+            echo ""
+            echo "=== ARTICLE ANALYSIS ==="
+            echo "Company articles: $(grep -o "Company articles: [0-9]*" unified_fintech_update.log | tail -1 | grep -o "[0-9]*" || echo "0")"
+            echo "Trend articles: $(grep -o "Trend articles: [0-9]*" unified_fintech_update.log | tail -1 | grep -o "[0-9]*" || echo "0")"
+            echo "Email articles: $(grep -o "Email articles: [0-9]*" unified_fintech_update.log | tail -1 | grep -o "[0-9]*" || echo "0")"
+            echo "LLM enhanced titles: $(grep -o "LLM enhanced titles: [0-9]*" unified_fintech_update.log | tail -1 | grep -o "[0-9]*" || echo "0")"
+            
+            # Check for errors
+            echo ""
+            echo "=== ERROR ANALYSIS ==="
+            error_count=$(grep -c "ERROR" unified_fintech_update.log || echo 0)
+            warning_count=$(grep -c "WARNING" unified_fintech_update.log || echo 0)
+            echo "Errors: ${error_count} | Warnings: ${warning_count}"
+            
+            if [ "$error_count" -gt 0 ]; then
+              echo "Recent errors:"
+              grep "ERROR" unified_fintech_update.log | tail -5
+            fi
+            
+            # Check system completion
+            if grep -q "ENHANCED UNIFIED UPDATE COMPLETED SUCCESSFULLY" unified_fintech_update.log; then
+              echo "✅ SYSTEM STATUS: SUCCESS"
+            else
+              echo "❌ SYSTEM STATUS: INCOMPLETE OR FAILED"
+            fi
+          else
+            echo "❌ WARNING: Log file not created - execution may have failed"
+          fi
+          
+          # Database analysis
+          echo ""
+          echo "=== DATABASE ANALYSIS ==="
+          if [ -f unified_fintech_update.db ]; then
+            echo "Database size: $(du -h unified_fintech_update.db)"
+            if command -v sqlite3 >/dev/null 2>&1; then
+              echo "Total articles: $(sqlite3 unified_fintech_update.db 'SELECT COUNT(*) FROM articles;' 2>/dev/null || echo 'Unable to query')"
+              echo "Recent articles (24h): $(sqlite3 unified_fintech_update.db "SELECT COUNT(*) FROM articles WHERE datetime(created_at) >= datetime('now', '-1 day');" 2>/dev/null || echo 'N/A')"
+              echo "Company articles: $(sqlite3 unified_fintech_update.db "SELECT COUNT(*) FROM articles WHERE source_type='company';" 2>/dev/null || echo 'N/A')"
+              echo "Trend articles: $(sqlite3 unified_fintech_update.db "SELECT COUNT(*) FROM articles WHERE source_type='trend';" 2>/dev/null || echo 'N/A')"
+            fi
+          else
+            echo "❌ WARNING: Database not found"
+          fi
+          
+      - name: Upload database artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fintech-database-${{ github.run_number }}
+          path: unified_fintech_update.db
+          retention-days: 30
+          
+      - name: Upload execution logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: execution-logs-${{ github.run_number }}
+          path: unified_fintech_update.log
+          retention-days: 14
+          
+      - name: Final execution summary
+        if: always()
+        run: |
+          echo "=== FINAL EXECUTION SUMMARY ==="
+          echo "Workflow: ${{ github.workflow }}"
+          echo "Run number: ${{ github.run_number }}"
+          echo "Job status: ${{ job.status }}"
+          echo "Trigger: ${{ github.event_name }}"
+          echo "Completion time: $(date)"
+          echo ""
+          
+          # Determine overall result
+          if [ -f unified_fintech_update.log ] && grep -q "ENHANCED UNIFIED UPDATE COMPLETED SUCCESSFULLY" unified_fintech_update.log; then
+            if grep -q "Email sent successfully" unified_fintech_update.log; then
+              echo "🎉 RESULT: COMPLETE SUCCESS - System ran and email sent"
+            else
+              echo "⚠️ RESULT: PARTIAL SUCCESS - System ran but no email sent"
+            fi
+          else
+            echo "❌ RESULT: EXECUTION FAILED - Check logs and configuration"
+          fi
  | wc -l)"
           echo "Email configuration: VALID"
           
